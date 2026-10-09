@@ -72,19 +72,22 @@ The interface must be fast enough for a complete sale in 3–10 seconds once the
 | Styling | Tailwind CSS 4 | Already installed via `@tailwindcss/turbopack`. |
 | Linting | ESLint 9 + `eslint-config-next` | Already configured. |
 | Database | PostgreSQL | Source of truth for all transactional business data. |
-| ORM | Prisma | Schema-driven, typed, migration support. |
+| ORM | Prisma 6.19.3 | Latest stable v6. Prisma v7+ has known Next.js 16 + Turbopack incompatibilities — do not upgrade until a dedicated migration step. |
 | Auth | Firebase Authentication | Identity only. Business authorization is in PostgreSQL. |
+| Firebase client SDK | firebase 11.10.0 | Auth + FCM client. v11 latest stable. |
+| Firebase server SDK | firebase-admin 14.5.0 | Server-side token verification. v14 latest stable. |
 | Push notifications | Firebase Cloud Messaging | For low-stock alerts, sync confirmations, etc. |
-| Local storage | Dexie.js + IndexedDB | Offline-capable local database in the browser. |
+| Local storage | Dexie.js 4.4.6 + IndexedDB | Offline-capable local database in the browser. |
 | PWA | Next.js manifest + service worker (Serwist) | Installability, offline shell, push. |
-| Offline UX | Next.js `experimental.useOffline` + `useOffline` hook | Already partially configured in `next.config.ts`. |
-| Validation | Zod | Server-side and client-side input validation. |
-| Testing | Vitest + Playwright | Unit/integration and E2E. |
+| Offline UX | Custom `useOfflineStatus` hook (Phase 9) | Browser `online`/`offline` events + HTTP probe. No dependency on experimental Next.js features. |
+| Validation | Zod 4.6.5 | Server-side and client-side input validation. Note: v4 API — not compatible with v3 patterns. |
+| Testing | Vitest 3.2.4 + Playwright 1.52.0 | Unit/integration and E2E. |
 
 ### Important Next.js 16 facts for this project
 - `cacheComponents: true` and `partialPrefetching: true` are already set in `next.config.ts`. This means **data fetching is dynamic by default** and we opt-in to caching with `use cache` directives. This replaces `unstable_cache`, `getStaticProps`, and explicit ISR.
+- **Prisma version locked to v6.** Prisma v7+ has documented incompatibilities with Next.js 16 + Turbopack (module resolution errors with the new `prisma-client` generator). Use `prisma@6.19.3` / `@prisma/client@6.19.3`. Do not upgrade to v7 or v8 without a dedicated migration step that verifies Turbopack compatibility.
 - `experimental.agentFeedback: true` is set — leave it in place.
-- `experimental.useOffline` must be added to `next.config.ts` for offline retry support.
+- `experimental.useOffline` is **not used**. Our offline-first architecture is based on Dexie.js + IndexedDB + an explicit sync queue, which is a self-contained approach that does not depend on any experimental Next.js framework feature. See §12 (Offline-First Strategy).
 - PPR (Partial Prerendering) is the default behavior when `cacheComponents` is enabled. No `experimental.ppr` flag needed.
 - Server Actions are stable and the preferred mutation pattern over separate API routes for most operations. Route Handlers remain appropriate for webhook endpoints and REST APIs consumed by external clients (mobile app in future).
 - `'use client'` and `'use server'` directives follow Next.js 16 boundary rules. Never put business logic inside `'use client'` components.
@@ -355,7 +358,7 @@ Expenses
   Expense                  (belongs to Branch + FinancialAccount)
 
 Financial
-  FinancialAccount         (belongs to Business)
+  FinancialAccount         (belongs to Business; branchId nullable — null = business-wide)
   FinancialTransaction     (belongs to FinancialAccount; ledger entry)
 
 Audit
@@ -469,9 +472,18 @@ Payment methods are not strings — they are references to `FinancialAccount` re
 **These are different numbers. Reports must never conflate them.**
 
 ### Financial account ownership (MVP)
-Financial accounts are owned at the **business level** — they are shared across all branches. A sale at any branch can be paid into the same Cash or Telebirr account.
+Financial accounts are owned at the **business level** in the MVP, with a nullable `branchId` field that enables branch-specific accounts later without a schema migration.
 
-The `FinancialAccount` schema includes a nullable `branchId` column (default null = business-wide). This allows branch-specific accounts to be introduced in a future phase without a breaking migration.
+**Interpretation:**
+- `branchId = null` → business-wide account (shared across all branches) — used in the MVP
+- `branchId = <id>` → branch-specific account (reserved for future use)
+
+Default accounts created on business registration (all with `branchId = null`):
+- Cash
+- Telebirr
+- Commercial Bank (optional)
+
+The MVP creates business-wide accounts only. Branch-specific accounts require no schema change — only service-layer logic to scope queries by `branchId` when set.
 
 ### Financial accounts as a ledger
 Every `FinancialAccount` maintains a balance through double-entry-adjacent `FinancialTransaction` records:
@@ -506,32 +518,46 @@ enum FinancialTransactionType {
 ### Design principle
 The application must remain fully operational for daily shop tasks when there is no internet. This is non-negotiable for the Ethiopian market where connectivity is unreliable.
 
-### Two-layer architecture
+### Architecture: Dexie.js + IndexedDB + explicit sync queue
 
-**Layer 1: Next.js offline support (navigation + Server Actions)**  
-`experimental.useOffline` (already enabled via `agentFeedback`, needs `useOffline: true` added) handles:
-- Pending navigations that retry when connectivity returns
-- Server Actions that queue and retry automatically
-- `useOffline` hook for offline status UI
+The offline-first architecture is built entirely on:
+- **Dexie.js** — typed wrapper around browser IndexedDB
+- **IndexedDB** — local persistent storage in the browser
+- **Explicit mutation queue** — every offline write is recorded as a `SyncOperation`
+- **Sync protocol** — a background processor submits queued operations to the server when connectivity returns
+- **Next.js server / Route Handler** — receives and processes sync batches
+- **PostgreSQL** — the authoritative source of truth
 
-This handles the case where the user briefly loses connectivity mid-operation.
-
-**Layer 2: Dexie.js + IndexedDB (full offline operation)**  
-For the case where the user is offline for extended periods, all operations go through a local Dexie database first, then sync to PostgreSQL when connectivity returns.
+This is a deliberate, self-contained offline architecture that does not depend on any experimental Next.js framework features. Next.js experimental offline features (e.g. `experimental.useOffline`) are **not used** — they address a different problem (retrying failed navigations) and are not appropriate as a foundation for business-data synchronization.
 
 ```
 User action (e.g., record sale)
         │
         ▼
 Dexie mutation (local, immediate)
+  "Sale completed" shown to user
         │
-        ├─── If ONLINE: also send to Server Action → PostgreSQL
+        ├─── If ONLINE: SyncQueue processor picks up immediately
+        │              → POST /api/sync/batch
+        │              → Service layer validates + writes to PostgreSQL
+        │              → SyncOperation marked ACKNOWLEDGED
         │
-        └─── If OFFLINE: add to SyncQueue
+        └─── If OFFLINE: SyncOperation stays PENDING in IndexedDB
                               │
-                              ▼ (when back online)
-                        SyncQueue processor → Server Action → PostgreSQL
+                              ▼ (connectivity restored)
+                        Background processor detects online event
+                              │
+                              ▼
+                        POST /api/sync/batch → PostgreSQL
+                              │
+                              ▼
+                        SyncOperation marked ACKNOWLEDGED
 ```
+
+### Connectivity detection
+Connectivity is detected using the browser's standard `online` / `offline` events plus a lightweight HTTP probe (a `HEAD` request to the app's own origin). This is more reliable than `navigator.onLine` alone, which can report `true` when the device has a network interface but no actual internet route.
+
+The `useOffline` hook in `src/client/hooks/use-offline-status.ts` (Phase 9) will implement this logic directly — it does not depend on `next/offline`.
 
 ### Local Dexie schema mirrors the core server entities
 The local Dexie database maintains a working set of:
@@ -1064,5 +1090,5 @@ Next.js 16.4.0 with `cacheComponents` and `partialPrefetching` are new stable AP
 **TR-004: Firebase Admin SDK on Edge Runtime**  
 Firebase Admin SDK does not run on the Edge runtime. `next.config.ts` must ensure all routes using Firebase Admin are on the Node.js runtime. The existing config does not set `runtime = 'edge'` anywhere, which is correct.
 
-**TR-005: Prisma + Prisma Accelerate on serverless**  
-If the application is deployed to a serverless environment (Vercel), Prisma connections need connection pooling (via Prisma Accelerate or PgBouncer) to prevent connection exhaustion. This must be addressed before production deployment.
+**TR-005: Prisma v6 + connection pooling on serverless**  
+If the application is deployed to a serverless environment (Vercel), Prisma v6 connections need connection pooling (via Prisma Accelerate or PgBouncer) to prevent connection exhaustion. This must be addressed before production deployment. Note: do not upgrade to Prisma v7/v8 to solve this — the pooling requirement exists in all versions; Prisma Accelerate or an external PgBouncer is the correct solution.

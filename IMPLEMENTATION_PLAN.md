@@ -44,6 +44,27 @@ The following architectural decisions from ARCHITECTURE.md §21 **must be answer
 
 **UD-006 — Tax in MVP:** Include nullable `taxRate` (Decimal?) and `taxAmount` (Int?) columns on `SaleItem` and `Expense`. Both default to null. No tax calculation logic, no Ethiopian tax rules, no tax reports in MVP. Tax logic is a future phase.
 
+### Dependency version decisions (Correction 4 — reviewed 2026-10-08)
+
+All versions were verified against npm for latest stable releases. The criteria for each choice: stable (not RC/pre-release), compatible with Next.js 16.4.0 + React 19.3.0 + TypeScript 5, no known breaking issues with the other selected packages.
+
+| Package | Version | Rationale |
+|---|---|---|
+| `prisma` + `@prisma/client` | **6.19.3** | Prisma v7 has documented incompatibilities with Next.js 16 + Turbopack that require multi-step workarounds. Prisma v8 is in RC (pre-release). v6.19.3 is the latest stable v6 release. v6 receives security patches until November 2026. **Do not upgrade to v7 or v8 without a dedicated migration step.** |
+| `firebase` | **11.10.0** | v11 is the current stable major. v12 exists and is more recent, but v11 is still actively maintained and has no breaking changes that affect our auth + FCM usage. Staying on v11 avoids introducing an untested migration mid-project. Review before Phase 10 (push notifications). |
+| `firebase-admin` | **14.5.0** | v14.5.0 is the current latest stable. v13 is old; v14 is the correct choice. No incompatibilities with Node.js 20/22 or our server-side token verification usage pattern. |
+| `dexie` | **4.4.6** | Latest stable. v4 is the current major. No known issues with the IndexedDB sync architecture. |
+| `zod` | **4.6.5** | Latest stable. Zod v4 is the current major — note the API differs from v3 in some areas (error shapes, `.safeParse` internals). All schemas in this project must target the v4 API. Do not copy v3 examples without verifying compatibility. |
+| `vitest` + `@vitest/coverage-v8` | **3.2.4** | Vitest v5 exists (latest) but is a recent major release. v3.x is stable, well-documented, and has no known issues with TypeScript 5 or our project setup. Both packages must always be the same version. Review before upgrading. |
+| `@playwright/test` | **1.52.0** | v1.64.0 is the current latest. v1.52.0 is stable and functional. The version gap is minor versions within the same major — no breaking changes. Either works; using 1.52.0 as originally declared to avoid introducing an untested change before Phase 12. |
+| `tsx` | **4.19.4** | v4.23.15 is the latest within v4. The gap is minor. 4.19.4 is stable. Used only for `prisma/seed.ts` execution — no runtime impact. |
+| `next` | **16.4.0** | Already installed. Do not change. |
+| `react` + `react-dom` | **19.3.0** | Already installed. Do not change. |
+
+**Packages that must stay in sync (same version):**
+- `prisma` and `@prisma/client` must always be identical versions
+- `vitest` and `@vitest/coverage-v8` must always be identical versions
+
 ### Open decisions still pending
 
 **UD-001** — What happens when a synced sale causes negative stock? Required before Phase 9.
@@ -98,17 +119,9 @@ Nothing was changed. Phase 0 is audit-and-plan only.
 
 **Type:** infra | **Risk:** low
 
-Add `experimental.useOffline: true` to enable the offline retry system. The existing `cacheComponents`, `partialPrefetching`, `agentFeedback`, and Turbopack CSS config must remain unchanged.
+Remove `experimental.useOffline` — our offline architecture is Dexie-first and does not depend on this experimental feature. Retain `cacheComponents`, `partialPrefetching`, and `agentFeedback`.
 
-```typescript
-// next.config.ts — add to experimental:
-experimental: {
-  agentFeedback: true,
-  useOffline: true,   // ADD THIS
-},
-```
-
-**Verify:** `npm run build` passes without errors.
+**Status: Complete.** `experimental.useOffline` was added in the initial Phase 1 pass and has now been removed.
 
 ---
 
@@ -1504,10 +1517,12 @@ This ensures the POS has a fresh product list even during periods of good connec
 
 ### 9.6 — Offline UI indicators
 
-**Type:** client | **Risk:** low | **Blocks:** none
+**Type:** client | **Risk:** low
 
-Implement the `OfflineBanner` stub from Phase 1:
-- Use `useOffline` hook from `next/offline`
+Implement the `OfflineBanner` stub from Phase 1 and a `useOfflineStatus` hook:
+- Custom hook in `src/client/hooks/use-offline-status.ts`
+- Detects connectivity via browser `online`/`offline` events + a lightweight `HEAD` probe to the app origin
+- Does NOT use `next/offline` or `experimental.useOffline`
 - Show a clear, non-intrusive banner when offline
 - Show sync status (n operations pending)
 - Green indicator when all synced
