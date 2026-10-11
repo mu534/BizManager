@@ -81,6 +81,18 @@ enum SaleStatus {
   VOIDED
 }
 
+/// Status of a sale return.
+enum ReturnStatus {
+  COMPLETED   // Refund issued and stock (if restockable) returned
+  PENDING     // Refund not yet issued
+}
+
+/// What happens to returned stock.
+enum StockDisposition {
+  RESTOCK   // Sellable — add back to inventory
+  DAMAGED   // Unsellable — do not restock
+}
+
 // ── Financial ────────────────────────────────────────────────
 
 enum AccountType {
@@ -480,6 +492,11 @@ model Sale {
 
   notes String?
 
+  /// Human-readable receipt number, unique within the branch.
+  /// Format: {BRANCH_PREFIX}-{YYYYMMDD}-{SEQ}
+  /// Generated server-side on sale creation.
+  receiptNumber String?
+
   /// Client-generated UUID for offline idempotency.
   syncOperationId String? @unique
 
@@ -604,6 +621,12 @@ model SaleReturn {
   /// Client-generated UUID for offline idempotency.
   syncOperationId String? @unique
 
+  /// Return processing status.
+  status ReturnStatus @default(COMPLETED)
+
+  /// Account used to issue the refund (null if pending).
+  refundAccountId String?
+
   sale      Sale   @relation(fields: [saleId], references: [id], onDelete: Restrict)
   branch    Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
   createdBy User   @relation(fields: [createdById], references: [id], onDelete: Restrict)
@@ -616,8 +639,6 @@ model SaleReturn {
   @@index([branchId, createdAt])
   @@map("sale_returns")
 }
-
-/// A single line item within a sale return.
 /// Ownership: belongs to SaleReturn → Sale → Branch → Business.
 ///
 /// saleItemId references the original SaleItem being returned.
@@ -636,6 +657,9 @@ model SaleReturnItem {
 
   /// Refund amount for these units — integer, smallest currency unit.
   refundAmount Int
+
+  /// What happens to the returned stock.
+  stockDisposition StockDisposition @default(RESTOCK)
 
   saleReturn SaleReturn @relation(fields: [saleReturnId], references: [id], onDelete: Restrict)
   saleItem   SaleItem   @relation(fields: [saleItemId], references: [id], onDelete: Restrict)
