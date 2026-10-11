@@ -1,0 +1,882 @@
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================
+// ENUMS
+// =============================================================
+
+// ── Identity / Tenancy ───────────────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum BusinessStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum BranchStatus {
+  ACTIVE
+  INACTIVE
+  DELETED
+}
+
+/// Roles that a user can hold within a business.
+/// OWNER has full access. MANAGER has operational access.
+/// STAFF can record sales and view permitted inventory.
+enum UserRole {
+  OWNER
+  MANAGER
+  STAFF
+}
+
+enum MemberStatus {
+  ACTIVE
+  INACTIVE
+  REVOKED
+}
+
+// ── Products ─────────────────────────────────────────────────
+
+enum ProductStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+// ── Inventory ────────────────────────────────────────────────
+
+/// Stock movement types.
+/// TRANSFER_IN / TRANSFER_OUT are included in the enum for
+/// future inter-branch transfers but are NOT used in Phase 2.
+/// Phase 2 scope: OPENING_STOCK, PURCHASE, SALE, SALE_RETURN,
+/// DAMAGE, MANUAL_ADJUST only.
+enum InventoryMovementType {
+  OPENING_STOCK
+  PURCHASE
+  SALE
+  SALE_RETURN
+  DAMAGE
+  MANUAL_ADJUST
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+
+// ── Sales ────────────────────────────────────────────────────
+
+enum SaleStatus {
+  COMPLETED
+  RETURNED
+  PARTIALLY_RETURNED
+  VOIDED
+}
+
+// ── Financial ────────────────────────────────────────────────
+
+enum AccountType {
+  CASH
+  MOBILE_MONEY
+  BANK
+  OTHER
+}
+
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+/// Direction and purpose of a financial transaction.
+/// Transfers (TRANSFER_IN/OUT) are NEVER revenue or expenses —
+/// they move money between accounts only.
+enum FinancialTransactionType {
+  SALE_PAYMENT    // inflow  — from a completed sale
+  EXPENSE_PAYMENT // outflow — for an expense
+  TRANSFER_IN     // inflow  — received from another account (not revenue)
+  TRANSFER_OUT    // outflow — sent to another account (not an expense)
+  MANUAL_CREDIT   // inflow  — opening balance, manual adjustment
+  MANUAL_DEBIT    // outflow — manual adjustment
+  REFUND          // outflow — for a sale return
+}
+
+// ── Expenses ─────────────────────────────────────────────────
+
+// (ExpenseCategory names are plain strings, not enum — owners
+//  create their own categories)
+
+// ── Sync ─────────────────────────────────────────────────────
+
+enum SyncStatus {
+  PENDING
+  SUBMITTED
+  ACKNOWLEDGED
+  FAILED
+}
+
+// =============================================================
+// DOMAIN A — MERCHANT FINANCES
+// =============================================================
+
+// ─────────────────────────────────────────────────────────────
+// IDENTITY / TENANCY
+// ─────────────────────────────────────────────────────────────
+
+/// Application user record.
+/// Ownership: top-level entity — not tenant-scoped itself.
+///
+/// firebaseUid is the link to Firebase Authentication.
+/// Firebase proves identity; PostgreSQL determines authorisation.
+/// The email field may be null for phone-auth users (deferred).
+model User {
+  id          String     @id @default(uuid())
+  firebaseUid String     @unique
+  name        String
+  email       String?    @unique
+  phone       String?
+  status      UserStatus @default(ACTIVE)
+
+  /// Business memberships for this user.
+  memberships BusinessMember[]
+
+  /// Sales created by this user.
+  sales Sale[]
+
+  /// Inventory movements created by this user.
+  inventoryMovements InventoryMovement[]
+
+  /// Expenses created by this user.
+  expenses Expense[]
+
+  /// Sale returns created by this user.
+  saleReturns SaleReturn[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+/// A retail business — the top-level multi-tenant boundary.
+/// Ownership: top-level tenant entity.
+///
+/// country uses ISO 3166-1 alpha-2 (e.g. "ET").
+/// currency uses ISO 4217 (e.g. "ETB").
+/// businessType is a free-text descriptor (clothing, electronics…).
+model Business {
+  id           String         @id @default(uuid())
+  name         String
+  businessType String
+  country      String
+  currency     String
+  phone        String?
+  email        String?
+  address      String?
+  logoUrl      String?
+  status       BusinessStatus @default(ACTIVE)
+
+  members          BusinessMember[]
+  branches         Branch[]
+
+  /// Products are business-wide (available at all branches).
+  products Product[]
+
+  /// Categories are business-wide.
+  categories Category[]
+
+  /// Financial accounts are business-wide by default.
+  /// branchId on FinancialAccount is nullable to support
+  /// branch-specific accounts in a future phase.
+  financialAccounts FinancialAccount[]
+
+  /// Expense categories are business-wide.
+  expenseCategories ExpenseCategory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("businesses")
+}
+
+/// A physical branch or shop within a business.
+/// Ownership: belongs to Business via businessId.
+///
+/// Inventory, sales, and expenses are scoped to a branch.
+/// A business starts with one default branch.
+model Branch {
+  id         String       @id @default(uuid())
+  businessId String
+  name       String
+  address    String?
+  phone      String?
+  isDefault  Boolean      @default(false)
+  status     BranchStatus @default(ACTIVE)
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+
+  /// Members who have explicit access to this branch.
+  memberAccess BranchAccess[]
+
+  sales              Sale[]
+  expenses           Expense[]
+  inventoryMovements InventoryMovement[]
+  stockSnapshots     StockSnapshot[]
+  saleReturns        SaleReturn[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([businessId])
+  @@map("branches")
+}
+
+/// Join table: User ↔ Business with role.
+/// Ownership: scoped to both User and Business.
+///
+/// A user can belong to multiple businesses with different roles.
+/// role defaults are: OWNER, MANAGER, or STAFF.
+model BusinessMember {
+  id         String       @id @default(uuid())
+  userId     String
+  businessId String
+  role       UserRole
+  status     MemberStatus @default(ACTIVE)
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+
+  /// Explicit branch-level access grants for this member.
+  branchAccess BranchAccess[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// A user can only have one membership per business.
+  @@unique([userId, businessId])
+  @@index([businessId])
+  @@index([userId])
+  @@map("business_members")
+}
+
+/// Explicit branch-level access grant for a BusinessMember.
+/// Ownership: scoped to BusinessMember → Business.
+///
+/// Allows MANAGER/STAFF to be restricted to specific branches.
+/// If a member has no BranchAccess rows, access policy is
+/// determined by their role (OWNER has implicit all-branch access).
+model BranchAccess {
+  id               String @id @default(uuid())
+  businessMemberId String
+  branchId         String
+
+  member BusinessMember @relation(fields: [businessMemberId], references: [id], onDelete: Cascade)
+  branch Branch         @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@unique([businessMemberId, branchId])
+  @@map("branch_access")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PRODUCTS
+// ─────────────────────────────────────────────────────────────
+
+/// Product category — business-scoped.
+/// Ownership: belongs to Business via businessId.
+model Category {
+  id          String  @id @default(uuid())
+  businessId  String
+  name        String
+  description String?
+
+  business Business   @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Category names must be unique within a business.
+  @@unique([businessId, name])
+  @@index([businessId])
+  @@map("categories")
+}
+
+/// A product/item sold by the business.
+/// Ownership: belongs to Business via businessId.
+/// Products are business-wide — they can be sold at any branch.
+/// Stock levels are tracked per-branch via InventoryMovement.
+///
+/// MONEY FIELDS (UD-005):
+///   costPrice, sellingPrice — integers in smallest currency unit.
+///   ETB 99.00 → stored as 9900.
+///
+/// TAX STUBS (UD-006):
+///   taxRate is a nullable Decimal (percentage, e.g. 15.00 for 15%).
+///   No tax logic is implemented in Phase 2.
+model Product {
+  id            String        @id @default(uuid())
+  businessId    String
+  categoryId    String?
+  name          String
+  sku           String?
+  barcode       String?
+  brand         String?
+  description   String?
+
+  /// Unit of measure: pcs, kg, box, litre, etc.
+  unit          String        @default("pcs")
+
+  /// Purchase cost per unit — integer, smallest currency unit.
+  costPrice     Int
+
+  /// Default selling price per unit — integer, smallest currency unit.
+  sellingPrice  Int
+
+  /// Stock level below which a low-stock alert is triggered.
+  minStockLevel Int           @default(0)
+
+  /// Nullable tax rate stub (UD-006). Not used in Phase 2.
+  taxRate       Decimal?      @db.Decimal(5, 2)
+
+  status        ProductStatus @default(ACTIVE)
+
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  inventoryMovements InventoryMovement[]
+  stockSnapshots     StockSnapshot[]
+  saleItems          SaleItem[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  /// SKUs must be unique within a business (when set).
+  @@unique([businessId, sku])
+  /// Barcodes must be unique within a business (when set).
+  @@unique([businessId, barcode])
+  @@index([businessId])
+  @@index([businessId, status])
+  @@map("products")
+}
+
+// ─────────────────────────────────────────────────────────────
+// INVENTORY
+// ─────────────────────────────────────────────────────────────
+
+/// A single stock movement event — the source of truth for inventory.
+/// Ownership: branch-scoped (branchId), product-scoped (productId).
+/// Current stock = SUM(quantity) WHERE productId AND branchId.
+///
+/// IMPORTANT: quantity is signed.
+///   Inflows  (OPENING_STOCK, PURCHASE, SALE_RETURN):  positive
+///   Outflows (SALE, DAMAGE, MANUAL_ADJUST negative):  negative
+///
+/// MONEY FIELD:
+///   unitCost — integer, smallest currency unit (cost per unit at
+///   time of movement). Nullable for non-purchase movements.
+///
+/// syncOperationId enables idempotent offline sync: if the server
+/// receives the same syncOperationId twice, it returns the original
+/// result without creating a duplicate movement.
+model InventoryMovement {
+  id              String               @id @default(uuid())
+  productId       String
+  branchId        String
+  createdById     String
+  type            InventoryMovementType
+
+  /// Signed quantity. Positive = stock increase, negative = decrease.
+  quantity        Int
+
+  /// Cost per unit at time of movement — integer, smallest currency unit.
+  /// Nullable for non-cost movements (e.g. DAMAGE).
+  unitCost        Int?
+
+  /// Reference to the source record (saleId, purchaseId, etc.).
+  referenceId     String?
+  referenceType   String?
+
+  notes           String?
+
+  /// Client-generated UUID for offline idempotency.
+  syncOperationId String? @unique
+
+  product     Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  branch      Branch  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy   User    @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@index([productId, branchId])
+  @@index([branchId, createdAt])
+  @@index([productId, branchId, createdAt])
+  @@map("inventory_movements")
+}
+
+/// Cached current stock level per product per branch.
+/// Derived from InventoryMovement — always reconstructible.
+/// Never treat this as the authoritative stock value;
+/// it is a performance cache only.
+model StockSnapshot {
+  id        String @id @default(uuid())
+  productId String
+  branchId  String
+  quantity  Int    @default(0)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  updatedAt DateTime @updatedAt
+
+  /// One snapshot per product per branch.
+  @@unique([productId, branchId])
+  @@index([branchId])
+  @@map("stock_snapshots")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SALES
+// ─────────────────────────────────────────────────────────────
+
+/// A completed sale transaction.
+/// Ownership: branch-scoped (branchId).
+/// Tenant path: Sale → Branch → Business.
+///
+/// MONEY FIELDS:
+///   subtotal, discountAmount, finalTotal — integer, smallest unit.
+///   subtotal  = sum of all SaleItem.lineTotal
+///   finalTotal = subtotal − discountAmount
+///
+/// Soft-delete: deletedAt — hard deletes are forbidden.
+/// syncOperationId: idempotency key for offline-created sales.
+model Sale {
+  id String @id @default(uuid())
+
+  branchId    String
+  createdById String
+  status      SaleStatus @default(COMPLETED)
+
+  /// Sum of all SaleItem.lineTotal before sale-level discount.
+  /// Integer, smallest currency unit.
+  subtotal       Int
+
+  /// Sale-level discount amount. Integer, smallest currency unit.
+  discountAmount Int @default(0)
+
+  /// Actual amount charged: subtotal − discountAmount.
+  /// Integer, smallest currency unit.
+  finalTotal Int
+
+  notes String?
+
+  /// Client-generated UUID for offline idempotency.
+  syncOperationId String? @unique
+
+  branch    Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy User   @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  items    SaleItem[]
+  payments Payment[]
+  returns  SaleReturn[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([branchId, createdAt])
+  @@index([branchId, status])
+  @@map("sales")
+}
+
+/// A single line item within a sale.
+/// Ownership: belongs to Sale → Branch → Business.
+///
+/// CRITICAL: unitPrice and unitCost are SNAPSHOTS at time of sale.
+/// They must NOT be recalculated from Product.sellingPrice or
+/// Product.costPrice — product prices may change after the sale.
+/// Historical reports must use these snapshot values.
+///
+/// MONEY FIELDS (all integer, smallest currency unit):
+///   unitPrice      — actual price charged per unit
+///   unitCost       — cost per unit at time of sale
+///   discountAmount — item-level discount
+///   lineTotal      — (unitPrice × quantity) − discountAmount
+///
+/// TAX STUBS (UD-006):
+///   taxRate, taxAmount — nullable, not used in Phase 2.
+///
+/// productName and productSku are also snapshots — the product
+/// could be renamed or its SKU changed after the sale.
+model SaleItem {
+  id     String @id @default(uuid())
+  saleId String
+
+  /// Snapshot of product identity at time of sale.
+  productId   String
+  productName String
+  productSku  String?
+
+  /// Actual price charged — integer, smallest currency unit.
+  unitPrice Int
+
+  /// Cost per unit at time of sale — integer, smallest currency unit.
+  unitCost Int
+
+  /// Number of units sold. Must be > 0.
+  quantity Int
+
+  /// Item-level discount — integer, smallest currency unit.
+  discountAmount Int @default(0)
+
+  /// (unitPrice × quantity) − discountAmount.
+  lineTotal Int
+
+  /// Nullable tax stubs (UD-006). Not used in Phase 2.
+  taxRate   Decimal? @db.Decimal(5, 2)
+  taxAmount Int?
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  saleReturnItems SaleReturnItem[]
+
+  @@index([saleId])
+  @@map("sale_items")
+}
+
+/// A payment record for a sale against a financial account.
+/// Ownership: Sale → Branch → Business; Account → Business.
+///
+/// A sale may have multiple Payment rows (mixed payment:
+/// e.g. part cash, part Telebirr).
+/// Each Payment creates a corresponding FinancialTransaction.
+///
+/// MONEY FIELD:
+///   amount — integer, smallest currency unit.
+model Payment {
+  id        String @id @default(uuid())
+  saleId    String
+  accountId String
+
+  /// Amount paid via this account — integer, smallest currency unit.
+  amount Int
+
+  sale    Sale             @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@index([saleId])
+  @@index([accountId])
+  @@map("payments")
+}
+
+/// A return (refund) against an original sale.
+/// Ownership: branch-scoped (branchId). Tenant path: Branch → Business.
+///
+/// The original Sale record is NEVER modified or deleted.
+/// Returns are additive records referencing the original sale.
+/// Partial returns are supported: only selected SaleItems are returned,
+/// and return quantity cannot exceed original sale quantity.
+///
+/// syncOperationId: idempotency key for offline-created returns.
+model SaleReturn {
+  id          String  @id @default(uuid())
+  saleId      String
+  branchId    String
+  createdById String
+  reason      String?
+
+  /// Total refund amount — integer, smallest currency unit.
+  totalRefund Int
+
+  /// Client-generated UUID for offline idempotency.
+  syncOperationId String? @unique
+
+  sale      Sale   @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  branch    Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy User   @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  items SaleReturnItem[]
+
+  createdAt DateTime @default(now())
+
+  @@index([saleId])
+  @@index([branchId, createdAt])
+  @@map("sale_returns")
+}
+
+/// A single line item within a sale return.
+/// Ownership: belongs to SaleReturn → Sale → Branch → Business.
+///
+/// saleItemId references the original SaleItem being returned.
+/// quantity must not exceed (originalQuantity − alreadyReturnedQuantity).
+/// This constraint is enforced at the service layer.
+///
+/// MONEY FIELD:
+///   refundAmount — integer, smallest currency unit.
+model SaleReturnItem {
+  id           String @id @default(uuid())
+  saleReturnId String
+  saleItemId   String
+
+  /// Units being returned. Must be ≥ 1.
+  quantity     Int
+
+  /// Refund amount for these units — integer, smallest currency unit.
+  refundAmount Int
+
+  saleReturn SaleReturn @relation(fields: [saleReturnId], references: [id], onDelete: Restrict)
+  saleItem   SaleItem   @relation(fields: [saleItemId], references: [id], onDelete: Restrict)
+
+  @@index([saleReturnId])
+  @@index([saleItemId])
+  @@map("sale_return_items")
+}
+
+// ─────────────────────────────────────────────────────────────
+// FINANCIAL ACCOUNTS & TRANSACTIONS
+// ─────────────────────────────────────────────────────────────
+
+/// A financial account representing a money store (cash till,
+/// mobile money wallet, bank account, etc.).
+/// Ownership: business-scoped (businessId).
+///
+/// branchId is nullable (UD-004 / Phase 1 correction):
+///   null → business-wide account (shared across all branches)
+///   <id> → branch-specific account (reserved for future use)
+/// MVP creates business-wide accounts only.
+///
+/// MONEY FIELD:
+///   currentBalance — integer, smallest currency unit.
+///   This is a CACHE — always reconstructible from FinancialTransaction.
+///   It must be updated atomically inside service-layer transactions.
+model FinancialAccount {
+  id String @id @default(uuid())
+
+  businessId String
+  /// Nullable: null = business-wide, set = branch-specific (future).
+  branchId   String?
+
+  name   String
+  type   AccountType
+  status AccountStatus @default(ACTIVE)
+
+  /// Cached running balance — integer, smallest currency unit.
+  /// Reconstruct with: SUM(signed amount) FROM financial_transactions.
+  currentBalance Int     @default(0)
+  isDefault      Boolean @default(false)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+
+  transactions FinancialTransaction[]
+  payments     Payment[]
+  expenses     Expense[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([businessId])
+  @@index([businessId, status])
+  @@map("financial_accounts")
+}
+
+/// An immutable ledger entry for a financial account.
+/// Ownership: account-scoped → business-scoped.
+///
+/// HARD DELETES ARE FORBIDDEN. Use only via service layer.
+///
+/// MONEY FIELDS (all integer, smallest currency unit):
+///   amount       — always positive; direction is conveyed by type.
+///   balanceAfter — running balance snapshot after this transaction.
+///
+/// type determines the direction of flow:
+///   Inflows:  SALE_PAYMENT, TRANSFER_IN, MANUAL_CREDIT
+///   Outflows: EXPENSE_PAYMENT, TRANSFER_OUT, MANUAL_DEBIT, REFUND
+///
+/// referenceId / referenceType: link to the source record
+///   (e.g. referenceType="Sale", referenceId=<saleId>).
+model FinancialTransaction {
+  id        String                   @id @default(uuid())
+  accountId String
+  type      FinancialTransactionType
+
+  /// Always positive. Direction is determined by type.
+  amount Int
+
+  /// Running account balance after this transaction.
+  balanceAfter Int
+
+  /// Source record reference.
+  referenceId   String?
+  referenceType String?
+
+  notes String?
+
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId, createdAt])
+  @@index([accountId, type])
+  @@map("financial_transactions")
+}
+
+// ─────────────────────────────────────────────────────────────
+// EXPENSES
+// ─────────────────────────────────────────────────────────────
+
+/// An expense category — business-scoped.
+/// Ownership: belongs to Business via businessId.
+/// Examples: Rent, Electricity, Water, Salary, Transport.
+model ExpenseCategory {
+  id         String  @id @default(uuid())
+  businessId String
+  name       String
+  isDefault  Boolean @default(false)
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  expenses Expense[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([businessId, name])
+  @@index([businessId])
+  @@map("expense_categories")
+}
+
+/// A recorded business expense.
+/// Ownership: branch-scoped (branchId). Tenant path: Branch → Business.
+///
+/// Soft-delete: deletedAt — hard deletes are forbidden.
+/// syncOperationId: idempotency key for offline-created expenses.
+///
+/// MONEY FIELDS (all integer, smallest currency unit):
+///   amount — expense amount paid from the specified account.
+///
+/// TAX STUB (UD-006):
+///   taxAmount — nullable, not used in Phase 2.
+model Expense {
+  id String @id @default(uuid())
+
+  branchId    String
+  categoryId  String
+  accountId   String
+  createdById String
+
+  /// Expense amount — integer, smallest currency unit.
+  amount Int
+
+  description String?
+
+  /// Calendar date of the expense (may differ from createdAt).
+  expenseDate DateTime @db.Date
+
+  /// Nullable tax stub (UD-006). Not used in Phase 2.
+  taxAmount Int?
+
+  /// Client-generated UUID for offline idempotency.
+  syncOperationId String? @unique
+
+  branch    Branch           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  category  ExpenseCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  account   FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  createdBy User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([branchId, expenseDate])
+  @@index([branchId, createdAt])
+  @@map("expenses")
+}
+
+// ─────────────────────────────────────────────────────────────
+// AUDIT LOG
+// ─────────────────────────────────────────────────────────────
+
+/// Immutable audit log entry.
+/// Ownership: business-scoped (businessId).
+///
+/// Hard deletes are forbidden — audit log entries must never be
+/// removed. There is no deletedAt on this model by design.
+///
+/// Records are written by service functions after important operations.
+/// The metadata field stores operation-specific context as JSON.
+model AuditLog {
+  id         String  @id @default(uuid())
+  businessId String
+  userId     String
+  action     String  // e.g. SALE_CREATED, PRICE_CHANGED, USER_ROLE_CHANGED
+  entityType String  // e.g. Sale, Product, BusinessMember
+  entityId   String
+  metadata   Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([businessId, createdAt])
+  @@index([entityType, entityId])
+  @@index([businessId, entityType])
+  @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────────────────────────
+// OFFLINE SYNC QUEUE
+// ─────────────────────────────────────────────────────────────
+
+/// Server-side record of a processed offline sync operation.
+/// Used to enforce idempotency: if the same syncOperationId is
+/// submitted twice, the server returns the original result without
+/// applying the operation again.
+///
+/// Ownership: user-scoped and business-scoped.
+/// The unique constraint on syncOperationId is the primary
+/// idempotency guard.
+model SyncOperation {
+  id String @id @default(uuid())
+
+  /// Client-generated UUID. The unique constraint here is the
+  /// idempotency guarantee — duplicate submissions are silently
+  /// absorbed.
+  syncOperationId String @unique
+
+  clientId    String
+  userId      String
+  businessId  String
+  entityType  String
+  entityId    String
+  operationType String // CREATE, UPDATE, DELETE
+
+  /// The payload that was applied. Stored for audit/debugging.
+  payload Json
+
+  status     SyncStatus @default(PENDING)
+  retryCount Int        @default(0)
+  lastError  String?
+  processedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([businessId, status])
+  @@index([userId, createdAt])
+  @@map("sync_operations")
+}
+
+// =============================================================
+// NOTE: SaaS Billing models (Plan, Subscription, Invoice,
+// PlatformPayment, etc.) are intentionally excluded from
+// Phase 2. They will be added in Phase 11.
+// =============================================================

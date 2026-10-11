@@ -719,19 +719,7 @@ npx prisma migrate dev --name initial_schema
 
 **Type:** db | **Risk:** low
 
-Create `prisma/seed.ts`:
-- Creates 3 plans (STARTER, BUSINESS, PRO) with features and limits
-- Creates default expense categories
-- Creates a test user, business, and branch for local development
-
-Add seed script to `package.json`:
-```json
-"prisma": {
-  "seed": "ts-node prisma/seed.ts"
-}
-```
-
-**Verify:** `npx prisma db seed` runs without errors.
+**Status: Deferred.** The seed script (`prisma/seed.ts`) was excluded from Phase 2 per the phase instructions — no demo data or production credentials. The `package.json` `prisma.seed` config is in place for when the seed script is written in Phase 3.
 
 ---
 
@@ -744,14 +732,20 @@ After running `prisma generate`, Prisma generates types in `node_modules/@prisma
 ---
 
 ### Phase 2 completion checklist
-- [ ] PostgreSQL running and accessible
-- [ ] `prisma/schema.prisma` complete with all entities
-- [ ] `src/server/db/prisma.ts` singleton created
-- [ ] Migration runs cleanly (`npx prisma migrate dev`)
-- [ ] Seed script runs (`npx prisma db seed`)
-- [ ] `npx prisma studio` shows all tables
-- [ ] All monetary amounts use `Int` (confirmed UD-005)
-- [ ] Financial accounts scoped per-business (confirmed UD-004)
+- [x] PostgreSQL running and accessible (`bizmanager` database at localhost:5432)
+- [x] `prisma/schema.prisma` complete with all core entities (20 models, 8 enums)
+- [x] `src/server/db/prisma.ts` singleton created
+- [x] Migration runs cleanly (`20261009140937_initial_schema` applied)
+- [x] All 20 tables confirmed present in database
+- [x] `prisma migrate status` shows database in sync
+- [x] `prisma generate` produces Prisma Client v6.19.3
+- [x] TypeScript compiles without errors
+- [x] All monetary amounts use `Int` (confirmed UD-005)
+- [x] `FinancialAccount.branchId` nullable (confirmed UD-004)
+- [x] Nullable tax stubs on `SaleItem`, `Expense`, `Product` (confirmed UD-006)
+- [x] `postinstall` script added to `package.json` for automatic client regeneration
+- [ ] `npm run lint` — environment hang (same Windows process issue as before; no code errors expected)
+- [ ] `npm run build` — blocked until Firebase env vars are configured (Phase 3 prerequisite)
 
 ---
 

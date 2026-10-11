@@ -379,7 +379,69 @@ SaaS Billing (separate)
 
 ---
 
-## 9. Inventory Strategy
+## Phase 2 Implementation Notes (added 2026-10-09)
+
+### Schema implemented
+
+Migration: `20261009140937_initial_schema`  
+Prisma version: 6.19.3  
+Tables created: 20 (plus `_prisma_migrations`)
+
+#### Models and ownership
+
+| Model | Table | Owner | Soft-delete |
+|---|---|---|---|
+| `User` | `users` | Top-level | — |
+| `Business` | `businesses` | Top-level tenant | — |
+| `Branch` | `branches` | Business | — |
+| `BusinessMember` | `business_members` | User + Business | — |
+| `BranchAccess` | `branch_access` | BusinessMember | — |
+| `Category` | `categories` | Business | — |
+| `Product` | `products` | Business | ✓ `deletedAt` |
+| `InventoryMovement` | `inventory_movements` | Branch + Product | — (append-only) |
+| `StockSnapshot` | `stock_snapshots` | Branch + Product | — (cache only) |
+| `Sale` | `sales` | Branch | ✓ `deletedAt` |
+| `SaleItem` | `sale_items` | Sale | — (cascade via sale) |
+| `Payment` | `payments` | Sale + Account | — |
+| `SaleReturn` | `sale_returns` | Branch | — (append-only) |
+| `SaleReturnItem` | `sale_return_items` | SaleReturn | — |
+| `FinancialAccount` | `financial_accounts` | Business (`branchId` nullable) | — |
+| `FinancialTransaction` | `financial_transactions` | FinancialAccount | — (immutable) |
+| `ExpenseCategory` | `expense_categories` | Business | — |
+| `Expense` | `expenses` | Branch | ✓ `deletedAt` |
+| `AuditLog` | `audit_logs` | Business | — (immutable) |
+| `SyncOperation` | `sync_operations` | User + Business | — |
+
+#### Key constraints
+
+- All monetary fields use `INTEGER` (smallest currency unit). No `Float` or `Decimal` for money amounts.
+- `InventoryMovement.quantity` is signed: positive = stock in, negative = stock out.
+- `SaleItem.unitPrice` and `SaleItem.unitCost` are snapshots — they do NOT reference `Product.sellingPrice` or `Product.costPrice` for historical accuracy.
+- `FinancialTransaction.amount` is always positive; direction is conveyed by the `FinancialTransactionType` enum.
+- `FinancialAccount.branchId` is nullable: `null` = business-wide (MVP default).
+- All `syncOperationId` fields have `@unique` constraints for offline idempotency.
+- All foreign keys use `ON DELETE RESTRICT` except `BranchAccess → BusinessMember` which uses `ON DELETE CASCADE` (access records are meaningless without their member).
+- `Category → Product` uses `ON DELETE SET NULL` (archiving a category does not orphan products).
+
+#### Tax stubs (UD-006)
+- `Product.taxRate`: `Decimal(5,2)?` — nullable, not populated in Phase 2.
+- `SaleItem.taxRate`: `Decimal(5,2)?`, `SaleItem.taxAmount`: `Int?` — nullable stubs.
+- `Expense.taxAmount`: `Int?` — nullable stub.
+
+#### Database setup commands
+```bash
+# Create and apply the initial migration (done in Phase 2)
+npx prisma migrate dev --name initial_schema --skip-seed
+
+# After pulling the repo fresh — apply existing migrations
+npx prisma migrate deploy
+
+# Check migration status
+npx prisma migrate status
+
+# Regenerate Prisma Client after schema changes
+npx prisma generate
+```
 
 ### Core principle: inventory movements are the source of truth
 The system maintains a ledger of stock movements. Current stock is derived by summing movements. A `StockSnapshot` table caches the current quantity per product per branch for query performance — but it is always reconstructible and is never the authoritative record.
