@@ -17,6 +17,7 @@
  *   import { prisma } from '@server/db/prisma';
  *   const users = await prisma.user.findMany();
  */
+import "server-only";
 import { PrismaClient } from "@prisma/client";
 
 // Extend globalThis with the prisma cache property.
