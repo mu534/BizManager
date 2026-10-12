@@ -213,6 +213,9 @@ model Business {
   /// Expense categories are business-wide.
   expenseCategories ExpenseCategory[]
 
+  /// SaaS subscription — one per business (Phase 11).
+  subscription Subscription?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -900,7 +903,140 @@ model SyncOperation {
 }
 
 // =============================================================
-// NOTE: SaaS Billing models (Plan, Subscription, Invoice,
-// PlatformPayment, etc.) are intentionally excluded from
-// Phase 2. They will be added in Phase 11.
+// DOMAIN B — SaaS PLATFORM BILLING
+// =============================================================
+// These models are completely separate from merchant finances.
+// A merchant's Cash/Telebirr balance has nothing to do with their
+// BizManager subscription payment. Never mix these domains.
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+/// A BizManager subscription plan (STARTER, BUSINESS, PRO).
+/// Plan details are configured in the database — not hardcoded.
+model Plan {
+  id          String  @id @default(uuid())
+  name        String  @unique // STARTER, BUSINESS, PRO
+  displayName String
+  isActive    Boolean @default(true)
+
+  features      PlanFeature[]
+  limits        UsageLimit[]
+  subscriptions Subscription[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("plans")
+}
+
+/// A feature flag for a plan.
+model PlanFeature {
+  id         String  @id @default(uuid())
+  planId     String
+  featureKey String // MULTI_BRANCH, ADVANCED_REPORTS, etc.
+  enabled    Boolean @default(true)
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@unique([planId, featureKey])
+  @@map("plan_features")
+}
+
+/// A usage limit for a plan.
+model UsageLimit {
+  id       String @id @default(uuid())
+  planId   String
+  limitKey String // MAX_PRODUCTS, MAX_USERS, MAX_TRANSACTIONS_MONTH
+  value    Int    // -1 = unlimited
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@unique([planId, limitKey])
+  @@map("usage_limits")
+}
+
+/// A business subscription to a BizManager plan.
+/// One subscription per business.
+model Subscription {
+  id                 String             @id @default(uuid())
+  businessId         String             @unique
+  planId             String
+  status             SubscriptionStatus @default(TRIAL)
+  trialEndsAt        DateTime?
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelledAt        DateTime?
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  plan     Plan      @relation(fields: [planId], references: [id], onDelete: Restrict)
+  invoices Invoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("subscriptions")
+}
+
+/// A BizManager platform invoice.
+/// Separate from merchant financial records.
+model Invoice {
+  id             String        @id @default(uuid())
+  businessId     String
+  subscriptionId String
+  amount         Int
+  currency       String
+  status         InvoiceStatus @default(PENDING)
+  dueDate        DateTime
+  paidAt         DateTime?
+
+  subscription    Subscription      @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+  platformPayments PlatformPayment[]
+
+  createdAt DateTime @default(now())
+
+  @@index([businessId])
+  @@map("invoices")
+}
+
+/// A platform-level payment for a BizManager subscription invoice.
+/// NOT a merchant sale payment.
+model PlatformPayment {
+  id        String        @id @default(uuid())
+  invoiceId String
+  amount    Int
+  currency  String
+  method    String
+  reference String?
+  status    PaymentStatus @default(PENDING)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@map("platform_payments")
+}
+
+// =============================================================
+// NOTE: SaaS Billing models were intentionally excluded from
+// Phase 2. They were added in Phase 11 via migration.
 // =============================================================
