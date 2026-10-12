@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.52.0",
+    "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

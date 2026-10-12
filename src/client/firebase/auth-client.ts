@@ -21,6 +21,7 @@ import {
   type UserCredential,
 } from "firebase/auth";
 import { firebaseApp } from "./firebase-client";
+import { db } from "@client/db/dexie";
 
 export const firebaseAuth = getAuth(firebaseApp);
 
@@ -92,8 +93,22 @@ export async function signInWithGoogle(): Promise<void> {
 /**
  * Sign out from both Firebase and the server session.
  * Call this from sign-out buttons/actions.
+ *
+ * Clears all local IndexedDB data so one user's sensitive records
+ * are not exposed to the next user on a shared device.
  */
 export async function signOut(): Promise<void> {
+  // Clear local IndexedDB data before signing out.
+  try {
+    await db.localSales.clear();
+    await db.localProducts.clear();
+    await db.localExpenses.clear();
+    await db.syncQueue.clear();
+    // Optionally clear the stable device ID so the next user gets a fresh one.
+    localStorage.removeItem("bm_client_id");
+  } catch {
+    // Non-fatal — continue with sign-out even if clearing fails.
+  }
   // Clear the server-side session cookie first.
   await fetch("/api/auth/sign-out", { method: "POST" });
   // Then sign out of Firebase client-side.

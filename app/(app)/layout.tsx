@@ -4,6 +4,7 @@ import { getSessionUserId } from "@server/auth/session";
 import { getUserById } from "@server/services/user.service";
 import { getBusinessesForUser } from "@server/services/business.service";
 import SignOutButton from "./sign-out-button";
+import { OfflineBanner } from "@components/offline/offline-banner";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const userId = await getSessionUserId();
@@ -30,6 +31,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
       </header>
+      <OfflineBanner />
       <main className="flex-1 bg-gray-50">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
           {children}
