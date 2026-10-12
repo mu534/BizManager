@@ -388,6 +388,3 @@ export async function getMovementHistory(
 
   return { movements, total };
 }
-
-// Re-export type so callers can use it without importing Prisma directly.
-export type { RecordMovementParams };

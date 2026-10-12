@@ -125,6 +125,8 @@ export interface SyncSalePayload {
   discountAmount: string;
   accountId: string;
   notes: string | null;
+  /** branchId passed to the server for resolveContext verification. */
+  branchId: string;
 }
 
 export interface SyncExpensePayload {
@@ -138,6 +140,8 @@ export interface SyncExpensePayload {
   description: string | null;
   /** ISO date string YYYY-MM-DD */
   expenseDate: string;
+  /** branchId passed to the server for resolveContext verification. */
+  branchId: string;
 }
 
 // ─── Sync queue item ─────────────────────────────────────────────────────────

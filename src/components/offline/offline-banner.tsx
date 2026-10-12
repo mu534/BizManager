@@ -49,7 +49,7 @@ function useSyncQueueCounts(businessId?: string): QueueCounts {
       try {
         const all = await db.syncQueue
           .where("[businessId+status]")
-          .startsWithAnyOf([
+          .anyOf([
             [businessId, "pending"],
             [businessId, "submitting"],
             [businessId, "conflict"],

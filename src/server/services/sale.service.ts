@@ -91,7 +91,7 @@ export async function createSale(
   if (!business) throw appError.notFound("Business not found.");
   const currency = business.currency;
 
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx): Promise<SaleWithDetails> => {
     // ── Idempotency check ──────────────────────────────────
     if (input.syncOperationId) {
       const existing = await tx.sale.findUnique({
@@ -99,7 +99,12 @@ export async function createSale(
         include: {
           items: { include: { product: { select: { name: true, sku: true } } } },
           payments: { include: { account: { select: { name: true, type: true } } } },
-          returns: true,
+          returns: {
+            include: {
+              items: { select: { id: true, saleItemId: true, quantity: true, refundAmount: true } },
+              createdBy: { select: { name: true } },
+            },
+          },
           branch: { select: { name: true } },
           createdBy: { select: { name: true } },
         },
