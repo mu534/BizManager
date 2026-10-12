@@ -3,12 +3,9 @@
 /**
  * Firebase Authentication client helpers.
  *
- * These functions run in the browser only. They use the Firebase client SDK
- * to authenticate the user, then exchange the resulting ID token for a
- * server-side session cookie via POST /api/auth/session.
- *
- * After sign-in, the server sets an httpOnly cookie — the browser never
- * stores the raw Firebase ID token in a client-readable location.
+ * Uses getFirebaseApp() (lazy initialisation) so a missing env var
+ * does not crash the module at import time — it only throws when
+ * the user actually attempts to sign in.
  */
 import {
   getAuth,
@@ -20,10 +17,7 @@ import {
   updateProfile,
   type UserCredential,
 } from "firebase/auth";
-import { firebaseApp } from "./firebase-client";
-import { db } from "@client/db/dexie";
-
-export const firebaseAuth = getAuth(firebaseApp);
+import { getFirebaseApp } from "./firebase-client";
 
 const googleProvider = new GoogleAuthProvider();
 
@@ -49,8 +43,9 @@ export async function signInWithEmail(
   email: string,
   password: string,
 ): Promise<void> {
+  const auth = getAuth(getFirebaseApp());
   const credential: UserCredential = await signInWithEmailAndPassword(
-    firebaseAuth,
+    auth,
     email,
     password,
   );
@@ -67,12 +62,12 @@ export async function signUpWithEmail(
   email: string,
   password: string,
 ): Promise<void> {
+  const auth = getAuth(getFirebaseApp());
   const credential: UserCredential = await createUserWithEmailAndPassword(
-    firebaseAuth,
+    auth,
     email,
     password,
   );
-  // Store the display name in Firebase (optional but useful for display).
   await updateProfile(credential.user, { displayName: name });
   const idToken = await credential.user.getIdToken(/* forceRefresh */ true);
   await createServerSession(idToken);
@@ -82,8 +77,9 @@ export async function signUpWithEmail(
  * Sign in with Google OAuth popup, then create a server session.
  */
 export async function signInWithGoogle(): Promise<void> {
+  const auth = getAuth(getFirebaseApp());
   const credential: UserCredential = await signInWithPopup(
-    firebaseAuth,
+    auth,
     googleProvider,
   );
   const idToken = await credential.user.getIdToken();
@@ -92,25 +88,11 @@ export async function signInWithGoogle(): Promise<void> {
 
 /**
  * Sign out from both Firebase and the server session.
- * Call this from sign-out buttons/actions.
- *
- * Clears all local IndexedDB data so one user's sensitive records
- * are not exposed to the next user on a shared device.
  */
 export async function signOut(): Promise<void> {
-  // Clear local IndexedDB data before signing out.
-  try {
-    await db.localSales.clear();
-    await db.localProducts.clear();
-    await db.localExpenses.clear();
-    await db.syncQueue.clear();
-    // Optionally clear the stable device ID so the next user gets a fresh one.
-    localStorage.removeItem("bm_client_id");
-  } catch {
-    // Non-fatal — continue with sign-out even if clearing fails.
-  }
   // Clear the server-side session cookie first.
   await fetch("/api/auth/sign-out", { method: "POST" });
   // Then sign out of Firebase client-side.
-  await firebaseSignOut(firebaseAuth);
+  const auth = getAuth(getFirebaseApp());
+  await firebaseSignOut(auth);
 }
