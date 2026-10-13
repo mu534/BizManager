@@ -210,6 +210,9 @@ function GoogleIcon() {
 }
 
 function getFirebaseErrorMessage(err: unknown): string {
+  if (err instanceof TypeError && err.message === "FIREBASE_CONFIG_MISSING") {
+    return "Sign-in is not available right now. Please try again later.";
+  }
   if (err instanceof Error) {
     const code = "code" in err ? String((err as { code?: string }).code) : "";
     const messages: Record<string, string> = {
@@ -221,7 +224,7 @@ function getFirebaseErrorMessage(err: unknown): string {
         "Network error. Check your connection and try again.",
       "auth/popup-closed-by-user": "Sign-in was cancelled.",
     };
-    return messages[code] ?? err.message ?? "Sign-up failed. Please try again.";
+    return messages[code] ?? "Sign-up failed. Please try again.";
   }
   return "Sign-up failed. Please try again.";
 }
