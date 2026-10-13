@@ -26,6 +26,10 @@ export default function SignInForm() {
       await signInWithEmail(email, password);
       router.push(nextPath);
     } catch (err) {
+      // Log the raw error in development for debugging — never shown to user.
+      if (process.env.NODE_ENV === "development") {
+        console.error("[sign-in] Firebase error:", err);
+      }
       const message = getFirebaseErrorMessage(err);
       setFormState({ status: "error", message });
     }
@@ -37,6 +41,9 @@ export default function SignInForm() {
       await signInWithGoogle();
       router.push(nextPath);
     } catch (err) {
+      if (process.env.NODE_ENV === "development") {
+        console.error("[sign-in] Google error:", err);
+      }
       const message = getFirebaseErrorMessage(err);
       setFormState({ status: "error", message });
     }
@@ -185,6 +192,7 @@ function getFirebaseErrorMessage(err: unknown): string {
     const code = "code" in err ? String((err as { code?: string }).code) : "";
     const messages: Record<string, string> = {
       "auth/invalid-credential": "Incorrect email or password.",
+      "auth/invalid-email": "Enter a valid email address.",
       "auth/user-not-found": "No account found with this email.",
       "auth/wrong-password": "Incorrect password.",
       "auth/too-many-requests":
@@ -193,9 +201,13 @@ function getFirebaseErrorMessage(err: unknown): string {
       "auth/network-request-failed":
         "Network error. Check your connection and try again.",
       "auth/popup-closed-by-user": "Sign-in was cancelled.",
+      "auth/popup-blocked":
+        "Pop-up was blocked by your browser. Allow pop-ups for this site and try again.",
+      "auth/operation-not-allowed":
+        "Email/password sign-in is not enabled. Enable it in your Firebase Console under Authentication → Sign-in method.",
+      "auth/configuration-not-found":
+        "Firebase Authentication is not configured correctly. Check your Firebase project settings.",
     };
-    // Return the mapped message if known, otherwise a safe generic fallback.
-    // Never expose err.message directly — it may contain internal details.
     return messages[code] ?? "Sign-in failed. Please try again.";
   }
   return "Sign-in failed. Please try again.";
