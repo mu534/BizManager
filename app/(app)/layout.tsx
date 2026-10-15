@@ -6,6 +6,9 @@ import { getBusinessesForUser } from "@server/services/business.service";
 import SignOutButton from "./sign-out-button";
 import { OfflineBanner } from "@components/offline/offline-banner";
 
+// This layout reads cookies — must not be statically prerendered.
+export const instant = false;
+
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const userId = await getSessionUserId();
   if (!userId) redirect("/sign-in");

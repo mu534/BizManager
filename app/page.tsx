@@ -2,8 +2,12 @@ import { redirect } from "next/navigation";
 import { getSessionUserId } from "@server/auth/session";
 import { getBusinessesForUser } from "@server/services/business.service";
 
+// This route reads cookies (session) — opt out of static prerendering.
+// See: https://nextjs.org/docs/messages/blocking-prerender-runtime
+export const instant = false;
+
 /**
- * Root page — smart redirect.
+ * Root page — smart redirect based on session state.
  * Authenticated + has business → /app
  * Authenticated + no business → /create-business
  * Not authenticated → /sign-in

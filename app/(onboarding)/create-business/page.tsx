@@ -6,6 +6,9 @@ import CreateBusinessForm from "./create-business-form";
 
 export const metadata: Metadata = { title: "Set Up Your Business" };
 
+// Reads cookies via resolveUserIdentityFromSession — must not prerender.
+export const instant = false;
+
 /**
  * Onboarding page — create your first business.
  *

@@ -9,6 +9,9 @@ import { getBusinessesForUser } from "@server/services/business.service";
  * In Phase 3, if a user has exactly one business, we auto-select it.
  * Multi-business selection will be added when needed.
  */
+// Reads cookies via getSessionUserId — must not prerender.
+export const instant = false;
+
 export default async function AppRootPage({
   searchParams,
 }: {
