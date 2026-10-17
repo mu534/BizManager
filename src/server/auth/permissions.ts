@@ -42,6 +42,11 @@ export function canViewFinancialReports(ctx: TenantContext): boolean {
   return ctx.role === UserRole.OWNER || ctx.role === UserRole.MANAGER;
 }
 
+/** Require OWNER or MANAGER to access financial reports. Throws FORBIDDEN for STAFF. */
+export function requireFinancialReports(ctx: TenantContext): void {
+  assertMinimumRole(ctx.role, UserRole.MANAGER);
+}
+
 /** Only OWNER can manage users, roles, and business settings. */
 export function canManageUsers(ctx: TenantContext): boolean {
   return ctx.role === UserRole.OWNER;

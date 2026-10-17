@@ -195,12 +195,12 @@ export function ExpenseFormClient({
 
   if (formState === "success" && savedExpense) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+      <div className="rounded-card border border-line bg-surface p-6 space-y-4">
         <div className="flex items-center gap-3">
           <span className="text-2xl">✓</span>
           <div>
-            <p className="font-semibold text-gray-900">Expense recorded</p>
-            <p className="text-sm text-gray-500">
+            <p className="font-semibold text-ink-900">Expense recorded</p>
+            <p className="text-sm text-ink-500">
               {savedExpense.categoryName} —{" "}
               {Money.format(savedExpense.amount, currency)}
             </p>
@@ -208,7 +208,7 @@ export function ExpenseFormClient({
         </div>
 
         {savedExpense.syncStatus === "offline" && (
-          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+          <p className="text-sm text-warning-700 bg-warning-50 border border-warning-600/25 rounded px-3 py-2">
             Saved locally — will sync automatically when connected.
           </p>
         )}
@@ -217,13 +217,13 @@ export function ExpenseFormClient({
           <button
             type="button"
             onClick={resetForm}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            className="rounded-control bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
           >
             Record another
           </button>
           <a
             href={`/app/${businessId}/expenses`}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="rounded-control border border-line-strong px-4 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50"
           >
             View expenses
           </a>
@@ -235,16 +235,16 @@ export function ExpenseFormClient({
   // ─── Form ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
+    <div className="rounded-card border border-line bg-surface p-6">
       {isOffline && (
-        <p className="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+        <p className="mb-4 text-sm text-warning-700 bg-warning-50 border border-warning-600/25 rounded px-3 py-2">
           You are offline — expense will be saved locally and synced when connected.
         </p>
       )}
 
       <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
         {(formState === "error" || errorMessage) && (
-          <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+          <div className="rounded-control bg-danger-50 border border-danger-600/25 px-3 py-2 text-sm text-danger-700">
             {errorMessage}
           </div>
         )}
@@ -252,7 +252,7 @@ export function ExpenseFormClient({
         <div>
           <label
             htmlFor="categoryId"
-            className="block text-sm font-medium text-gray-700 mb-1"
+            className="block text-sm font-medium text-ink-700 mb-1"
           >
             Category *
           </label>
@@ -262,7 +262,7 @@ export function ExpenseFormClient({
             required
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="block w-full rounded-control border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-600"
           >
             <option value="">Select category…</option>
             {categories.map((c) => (
@@ -276,7 +276,7 @@ export function ExpenseFormClient({
         <div>
           <label
             htmlFor="amount"
-            className="block text-sm font-medium text-gray-700 mb-1"
+            className="block text-sm font-medium text-ink-700 mb-1"
           >
             Amount *
           </label>
@@ -289,7 +289,7 @@ export function ExpenseFormClient({
             min="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="block w-full rounded-control border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-600"
             placeholder="0.00"
           />
         </div>
@@ -297,7 +297,7 @@ export function ExpenseFormClient({
         <div>
           <label
             htmlFor="accountId"
-            className="block text-sm font-medium text-gray-700 mb-1"
+            className="block text-sm font-medium text-ink-700 mb-1"
           >
             Payment account *
           </label>
@@ -307,7 +307,7 @@ export function ExpenseFormClient({
             required
             value={accountId}
             onChange={(e) => setAccountId(e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="block w-full rounded-control border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-600"
           >
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
@@ -320,7 +320,7 @@ export function ExpenseFormClient({
         <div>
           <label
             htmlFor="expenseDate"
-            className="block text-sm font-medium text-gray-700 mb-1"
+            className="block text-sm font-medium text-ink-700 mb-1"
           >
             Date *
           </label>
@@ -331,14 +331,14 @@ export function ExpenseFormClient({
             required
             value={expenseDate}
             onChange={(e) => setExpenseDate(e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="block w-full rounded-control border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-600"
           />
         </div>
 
         <div>
           <label
             htmlFor="description"
-            className="block text-sm font-medium text-gray-700 mb-1"
+            className="block text-sm font-medium text-ink-700 mb-1"
           >
             Description
           </label>
@@ -349,7 +349,7 @@ export function ExpenseFormClient({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Optional"
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="block w-full rounded-control border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-600"
           />
         </div>
 
@@ -357,13 +357,13 @@ export function ExpenseFormClient({
           <button
             type="submit"
             disabled={formState === "submitting"}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+            className="rounded-control bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
           >
             {formState === "submitting" ? "Saving…" : "Save expense"}
           </button>
           <a
             href={`/app/${businessId}/expenses`}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="rounded-control border border-line-strong px-4 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50"
           >
             Cancel
           </a>
