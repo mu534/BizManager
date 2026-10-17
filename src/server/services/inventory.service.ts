@@ -10,6 +10,7 @@
  * StockSnapshot is a performance cache — always updated atomically inside the same transaction.
  */
 import "server-only";
+import { Prisma } from "@prisma/client";
 import type {
   InventoryMovement,
   StockSnapshot,
@@ -18,7 +19,10 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@server/db/prisma";
 import { appError } from "@shared/errors";
-import { Money } from "@shared/money";
+import { parseMoneyStrict } from "@shared/sale-math";
+import { requireOwnerOrManager } from "@server/auth/permissions";
+import { assertSubscriptionActive } from "@server/services/subscription.service";
+import { decrementStock, incrementStock } from "@server/services/ledger";
 import type { TenantContext } from "@shared/types/auth.types";
 import type {
   OpeningStockInput,
@@ -90,103 +94,92 @@ async function getBusinessCurrency(businessId: string): Promise<string> {
 /**
  * Record a stock movement atomically.
  *
- * This is the core inventory write operation. It:
- *   1. Verifies product and branch belong to the context business.
- *   2. For outflows: checks StockSnapshot; rejects if stock would go negative.
- *   3. Inserts the InventoryMovement with signed quantity.
- *   4. Upserts the StockSnapshot using Prisma increment.
+ * Fixes: (1) no role check — STAFF could adjust stock; now OWNER/MANAGER only.
+ * (2) check-then-increment race could drive stock negative; the decrement is
+ * now a guarded UPDATE. (3) a repeated syncOperationId threw a unique-
+ * constraint error instead of returning the original movement.
  */
 export async function recordMovement(
   ctx: TenantContext,
   params: RecordMovementParams,
 ): Promise<InventoryMovement> {
-  return prisma.$transaction(async (tx) => {
-    // 1. Verify product ownership.
-    const product = await tx.product.findUnique({
-      where: { id: params.productId },
-    });
-    if (!product) throw appError.notFound("Product not found.");
-    if (product.businessId !== ctx.businessId) {
-      throw appError.tenantViolation("Product does not belong to this business.");
-    }
+  requireOwnerOrManager(ctx);
+  await assertSubscriptionActive(ctx);
 
-    // 2. Verify branch ownership.
-    const branch = await tx.branch.findUnique({
-      where: { id: params.branchId },
-    });
-    if (!branch) throw appError.notFound("Branch not found.");
-    if (branch.businessId !== ctx.businessId) {
-      throw appError.tenantViolation("Branch does not belong to this business.");
-    }
+  if (!Number.isInteger(params.signedQuantity) || params.signedQuantity === 0) {
+    throw appError.validationError("Quantity must be a non-zero whole number.");
+  }
 
-    // 3. Compute the signed quantity to store.
-    //    INFLOW types: stored as positive.
-    //    OUTFLOW types: stored as negative.
-    //    MANUAL_ADJUST: stored as-is (caller provides sign).
-    let storedQuantity: number;
-    if (INFLOW_TYPES.includes(params.type)) {
-      storedQuantity = Math.abs(params.signedQuantity);
-    } else if (OUTFLOW_TYPES.includes(params.type)) {
-      storedQuantity = -Math.abs(params.signedQuantity);
-    } else {
-      // MANUAL_ADJUST
-      storedQuantity = params.signedQuantity;
-    }
+  // Tenant checks up front (also keeps hostile ids out of the transaction).
+  const product = await prisma.product.findUnique({ where: { id: params.productId } });
+  if (!product) throw appError.notFound("Product not found.");
+  if (product.businessId !== ctx.businessId) {
+    throw appError.tenantViolation("Product does not belong to this business.");
+  }
+  const branch = await prisma.branch.findUnique({ where: { id: params.branchId } });
+  if (!branch) throw appError.notFound("Branch not found.");
+  if (branch.businessId !== ctx.businessId) {
+    throw appError.tenantViolation("Branch does not belong to this business.");
+  }
 
-    // 4. For outflows and negative adjustments: prevent negative stock.
-    if (storedQuantity < 0) {
-      const snapshot = await tx.stockSnapshot.findUnique({
-        where: {
-          productId_branchId: {
-            productId: params.productId,
-            branchId: params.branchId,
-          },
-        },
-      });
-      const currentStock = snapshot?.quantity ?? 0;
-      if (currentStock + storedQuantity < 0) {
-        throw appError.insufficientStock(
-          `Insufficient stock. Current: ${currentStock}, attempted: ${Math.abs(storedQuantity)}.`,
-        );
+  // INFLOW: positive. OUTFLOW: negative. MANUAL_ADJUST: caller's sign.
+  let storedQuantity: number;
+  if (INFLOW_TYPES.includes(params.type)) {
+    storedQuantity = Math.abs(params.signedQuantity);
+  } else if (OUTFLOW_TYPES.includes(params.type)) {
+    storedQuantity = -Math.abs(params.signedQuantity);
+  } else {
+    storedQuantity = params.signedQuantity;
+  }
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      if (params.syncOperationId) {
+        const existing = await tx.inventoryMovement.findUnique({
+          where: { syncOperationId: params.syncOperationId },
+        });
+        if (existing) {
+          if (existing.productId !== params.productId) {
+            throw appError.conflict("This operation id has already been used.");
+          }
+          return existing;
+        }
       }
-    }
 
-    // 5. Insert the InventoryMovement.
-    const movement = await tx.inventoryMovement.create({
-      data: {
-        productId: params.productId,
-        branchId: params.branchId,
-        createdById: ctx.userId,
-        type: params.type,
-        quantity: storedQuantity,
-        unitCost: params.unitCost ?? null,
-        referenceId: params.referenceId ?? null,
-        referenceType: params.referenceType ?? null,
-        notes: params.notes ?? null,
-        syncOperationId: params.syncOperationId ?? null,
-      },
-    });
+      if (storedQuantity < 0) {
+        await decrementStock(tx, params.productId, params.branchId, -storedQuantity, product.name);
+      } else {
+        await incrementStock(tx, params.productId, params.branchId, storedQuantity);
+      }
 
-    // 6. Upsert StockSnapshot using atomic increment.
-    await tx.stockSnapshot.upsert({
-      where: {
-        productId_branchId: {
+      return tx.inventoryMovement.create({
+        data: {
           productId: params.productId,
           branchId: params.branchId,
+          createdById: ctx.userId,
+          type: params.type,
+          quantity: storedQuantity,
+          unitCost: params.unitCost ?? null,
+          referenceId: params.referenceId ?? null,
+          referenceType: params.referenceType ?? null,
+          notes: params.notes ?? null,
+          syncOperationId: params.syncOperationId ?? null,
         },
-      },
-      create: {
-        productId: params.productId,
-        branchId: params.branchId,
-        quantity: storedQuantity,
-      },
-      update: {
-        quantity: { increment: storedQuantity },
-      },
+      });
     });
-
-    return movement;
-  });
+  } catch (err) {
+    if (
+      params.syncOperationId &&
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      const winner = await prisma.inventoryMovement.findUnique({
+        where: { syncOperationId: params.syncOperationId },
+      });
+      if (winner && winner.productId === params.productId) return winner;
+    }
+    throw err;
+  }
 }
 
 /**
@@ -198,7 +191,7 @@ export async function recordOpeningStock(
   input: OpeningStockInput,
 ): Promise<InventoryMovement> {
   const currency = await getBusinessCurrency(ctx.businessId);
-  const unitCost = Money.fromMajorUnits(parseFloat(input.unitCost), currency);
+  const unitCost = parseMoneyStrict(input.unitCost, currency, "Unit cost");
 
   return recordMovement(ctx, {
     productId: input.productId,
@@ -220,7 +213,7 @@ export async function recordStockReceipt(
   input: StockReceiptInput,
 ): Promise<InventoryMovement> {
   const currency = await getBusinessCurrency(ctx.businessId);
-  const unitCost = Money.fromMajorUnits(parseFloat(input.unitCost), currency);
+  const unitCost = parseMoneyStrict(input.unitCost, currency, "Unit cost");
 
   return recordMovement(ctx, {
     productId: input.productId,

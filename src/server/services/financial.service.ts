@@ -9,8 +9,9 @@ import "server-only";
 import type { FinancialAccount, FinancialTransaction } from "@prisma/client";
 import { prisma } from "@server/db/prisma";
 import { appError } from "@shared/errors";
-import { Money } from "@shared/money";
-import { requireOwnerOrManager } from "@server/auth/permissions";
+import { requireFinancialReports, requireOwnerOrManager } from "@server/auth/permissions";
+import { parseMoneyStrict } from "@shared/sale-math";
+import { creditAccount, debitAccount, lockKey } from "@server/services/ledger";
 import type { TenantContext } from "@shared/types/auth.types";
 import type {
   CreateAccountInput,
@@ -66,10 +67,7 @@ export async function createAccount(
 ): Promise<FinancialAccount> {
   requireOwnerOrManager(ctx);
   const currency = await getBusinessCurrency(ctx.businessId);
-  const openingBalance = Money.fromMajorUnits(
-    parseFloat(input.openingBalance ?? "0"),
-    currency,
-  );
+  const openingBalance = parseMoneyStrict(input.openingBalance ?? "0", currency, "Opening balance");
 
   return prisma.$transaction(async (tx) => {
     const account = await tx.financialAccount.create({
@@ -115,6 +113,7 @@ export async function getAccount(
   ctx: TenantContext,
   accountId: string,
 ): Promise<FinancialAccount> {
+  requireFinancialReports(ctx); // balances are financial data
   return requireAccount(ctx, accountId);
 }
 
@@ -125,6 +124,7 @@ export async function getAccountTransactions(
   page = 1,
   limit = 30,
 ): Promise<{ transactions: FinancialTransaction[]; total: number }> {
+  requireFinancialReports(ctx); // transaction history is financial data
   await requireAccount(ctx, accountId);
   const skip = (page - 1) * limit;
   const [transactions, total] = await Promise.all([
@@ -140,9 +140,10 @@ export async function getAccountTransactions(
 }
 
 /**
- * Transfer funds between two accounts.
- * Creates TRANSFER_OUT on the source and TRANSFER_IN on the destination.
- * Does NOT create revenue or expense — purely an account-to-account movement.
+ * Transfer between two accounts of the same business.
+ * Creates TRANSFER_OUT + TRANSFER_IN only — never revenue or expense.
+ * Balance changes are atomic (see ledger.ts); a per-business lock keeps
+ * opposite-direction transfers from deadlocking.
  */
 export async function transferFunds(
   ctx: TenantContext,
@@ -150,131 +151,64 @@ export async function transferFunds(
 ): Promise<void> {
   requireOwnerOrManager(ctx);
   const currency = await getBusinessCurrency(ctx.businessId);
-  const amount = Money.fromMajorUnits(parseFloat(input.amount), currency);
+  const amount = parseMoneyStrict(input.amount, currency, "Amount");
+  if (amount <= 0) throw appError.validationError("Amount must be greater than zero.");
+  if (input.fromAccountId === input.toAccountId) {
+    throw appError.validationError("Cannot transfer to the same account.");
+  }
 
   await prisma.$transaction(async (tx) => {
-    const fromAccount = await tx.financialAccount.findUnique({
-      where: { id: input.fromAccountId },
-    });
-    const toAccount = await tx.financialAccount.findUnique({
-      where: { id: input.toAccountId },
-    });
-
+    await lockKey(tx, `account-transfer:${ctx.businessId}`);
+    const [fromAccount, toAccount] = await Promise.all([
+      tx.financialAccount.findUnique({ where: { id: input.fromAccountId } }),
+      tx.financialAccount.findUnique({ where: { id: input.toAccountId } }),
+    ]);
     if (!fromAccount || fromAccount.businessId !== ctx.businessId || fromAccount.status !== "ACTIVE") {
       throw appError.invalidAccount("Source account not found or inactive.");
     }
     if (!toAccount || toAccount.businessId !== ctx.businessId || toAccount.status !== "ACTIVE") {
       throw appError.invalidAccount("Destination account not found or inactive.");
     }
-    if (fromAccount.id === toAccount.id) {
-      throw appError.validationError("Cannot transfer to the same account.");
-    }
-    if (fromAccount.currentBalance < amount) {
-      throw appError.validationError("Insufficient balance for transfer.");
-    }
 
-    const fromNewBalance = Money.subtract(fromAccount.currentBalance, amount);
-    const toNewBalance = Money.add(toAccount.currentBalance, amount);
-
-    await tx.financialTransaction.create({
-      data: {
-        accountId: fromAccount.id,
-        type: "TRANSFER_OUT",
-        amount,
-        balanceAfter: fromNewBalance,
-        referenceId: toAccount.id,
-        referenceType: "Transfer",
-        notes: input.notes ?? null,
-      },
+    await debitAccount(tx, fromAccount.id, amount, "TRANSFER_OUT", fromAccount.name, {
+      referenceId: toAccount.id,
+      referenceType: "Transfer",
+      notes: input.notes,
     });
-    await tx.financialAccount.update({
-      where: { id: fromAccount.id },
-      data: { currentBalance: fromNewBalance },
-    });
-
-    await tx.financialTransaction.create({
-      data: {
-        accountId: toAccount.id,
-        type: "TRANSFER_IN",
-        amount,
-        balanceAfter: toNewBalance,
-        referenceId: fromAccount.id,
-        referenceType: "Transfer",
-        notes: input.notes ?? null,
-      },
-    });
-    await tx.financialAccount.update({
-      where: { id: toAccount.id },
-      data: { currentBalance: toNewBalance },
+    await creditAccount(tx, toAccount.id, amount, "TRANSFER_IN", {
+      referenceId: fromAccount.id,
+      referenceType: "Transfer",
+      notes: input.notes,
     });
   });
 }
 
 /** Record a manual deposit (MANUAL_CREDIT). */
-export async function depositFunds(
-  ctx: TenantContext,
-  input: DepositInput,
-): Promise<void> {
+export async function depositFunds(ctx: TenantContext, input: DepositInput): Promise<void> {
   requireOwnerOrManager(ctx);
   const currency = await getBusinessCurrency(ctx.businessId);
-  const amount = Money.fromMajorUnits(parseFloat(input.amount), currency);
+  const amount = parseMoneyStrict(input.amount, currency, "Amount");
 
   await prisma.$transaction(async (tx) => {
-    const account = await tx.financialAccount.findUnique({
-      where: { id: input.accountId },
-    });
+    const account = await tx.financialAccount.findUnique({ where: { id: input.accountId } });
     if (!account || account.businessId !== ctx.businessId || account.status !== "ACTIVE") {
       throw appError.invalidAccount("Account not found or inactive.");
     }
-    const newBalance = Money.add(account.currentBalance, amount);
-    await tx.financialTransaction.create({
-      data: {
-        accountId: account.id,
-        type: "MANUAL_CREDIT",
-        amount,
-        balanceAfter: newBalance,
-        notes: input.notes ?? null,
-      },
-    });
-    await tx.financialAccount.update({
-      where: { id: account.id },
-      data: { currentBalance: newBalance },
-    });
+    await creditAccount(tx, account.id, amount, "MANUAL_CREDIT", { notes: input.notes });
   });
 }
 
 /** Record a manual withdrawal (MANUAL_DEBIT). */
-export async function withdrawFunds(
-  ctx: TenantContext,
-  input: WithdrawInput,
-): Promise<void> {
+export async function withdrawFunds(ctx: TenantContext, input: WithdrawInput): Promise<void> {
   requireOwnerOrManager(ctx);
   const currency = await getBusinessCurrency(ctx.businessId);
-  const amount = Money.fromMajorUnits(parseFloat(input.amount), currency);
+  const amount = parseMoneyStrict(input.amount, currency, "Amount");
 
   await prisma.$transaction(async (tx) => {
-    const account = await tx.financialAccount.findUnique({
-      where: { id: input.accountId },
-    });
+    const account = await tx.financialAccount.findUnique({ where: { id: input.accountId } });
     if (!account || account.businessId !== ctx.businessId || account.status !== "ACTIVE") {
       throw appError.invalidAccount("Account not found or inactive.");
     }
-    if (account.currentBalance < amount) {
-      throw appError.validationError("Insufficient balance for withdrawal.");
-    }
-    const newBalance = Money.subtract(account.currentBalance, amount);
-    await tx.financialTransaction.create({
-      data: {
-        accountId: account.id,
-        type: "MANUAL_DEBIT",
-        amount,
-        balanceAfter: newBalance,
-        notes: input.notes ?? null,
-      },
-    });
-    await tx.financialAccount.update({
-      where: { id: account.id },
-      data: { currentBalance: newBalance },
-    });
+    await debitAccount(tx, account.id, amount, "MANUAL_DEBIT", account.name, { notes: input.notes });
   });
 }

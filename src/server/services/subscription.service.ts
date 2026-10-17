@@ -89,6 +89,10 @@ export async function createTrialSubscription(
   const now = new Date();
   const trialEndsAt = new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
 
+  // Idempotent: a business has at most one subscription.
+  const already = await db.subscription.findUnique({ where: { businessId } });
+  if (already) return already;
+
   return db.subscription.create({
     data: {
       businessId,
@@ -248,4 +252,81 @@ export async function updateSubscriptionStatus(
     where: { businessId },
     data: { status },
   });
+}
+
+// ─── Server-side enforcement ──────────────────────────────────────────────────
+//
+// Until now the entitlement helpers above were defined but never called, and
+// createTrialSubscription() was never invoked, so no business had a
+// subscription and nothing was enforced. Enforcement now happens inside the
+// services (never in the browser), so it also covers offline-sync and API
+// callers.
+
+function isSubscriptionExpired(sub: SubscriptionWithPlan, now: Date): boolean {
+  return (
+    sub.status === "EXPIRED" ||
+    sub.status === "CANCELLED" ||
+    (sub.status === "TRIAL" && sub.trialEndsAt != null && sub.trialEndsAt < now)
+  );
+}
+
+/**
+ * Load the subscription, provisioning a 14-day trial for businesses created
+ * before trials were wired into business creation. Safe under concurrency:
+ * the unique businessId constraint makes a racing second create fail, after
+ * which the winner's row is read.
+ */
+export async function ensureSubscription(
+  ctx: TenantContext,
+): Promise<SubscriptionWithPlan> {
+  const existing = await getSubscription(ctx);
+  if (existing) return existing;
+  try {
+    await createTrialSubscription(ctx.businessId);
+  } catch (err) {
+    // A concurrent request may have created it; fall through and re-read.
+    const again = await getSubscription(ctx);
+    if (again) return again;
+    throw err;
+  }
+  const created = await getSubscription(ctx);
+  if (!created) throw appError.serverError("Could not provision subscription.");
+  return created;
+}
+
+/**
+ * Block creation of new business data when the trial/subscription has lapsed.
+ * Reads, reports and returns/refunds stay available so a merchant is never
+ * locked out of their own records.
+ */
+export async function assertSubscriptionActive(
+  ctx: TenantContext,
+): Promise<SubscriptionWithPlan> {
+  const sub = await ensureSubscription(ctx);
+  if (isSubscriptionExpired(sub, new Date())) {
+    throw appError.subscriptionLimit(
+      "Your trial or subscription has ended. Renew your plan to record new sales, products and expenses.",
+    );
+  }
+  return sub;
+}
+
+/**
+ * Active-subscription check plus a usage cap. `countUsage` is only invoked
+ * when the plan has a finite limit, so unlimited plans cost no extra query.
+ */
+export async function assertWithinLimit(
+  ctx: TenantContext,
+  limitKey: LimitKey,
+  countUsage: () => Promise<number>,
+): Promise<void> {
+  const sub = await assertSubscriptionActive(ctx);
+  const limit = sub.plan.limits.find((l) => l.limitKey === limitKey);
+  if (!limit || limit.value === -1) return;
+  const used = await countUsage();
+  if (used >= limit.value) {
+    throw appError.subscriptionLimit(
+      `You have reached the ${limitKey.replace(/_/g, " ").toLowerCase()} limit for your ${sub.plan.displayName} plan (${limit.value}). Upgrade to continue.`,
+    );
+  }
 }

@@ -14,8 +14,8 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@server/db/prisma";
 import { appError } from "@shared/errors";
+import { createTrialSubscription } from "@server/services/subscription.service";
 import type { CreateBusinessInput } from "@shared/validation/business.schema";
-import type { TenantContext } from "@shared/types/auth.types";
 import { UserRole } from "@shared/types/auth.types";
 
 /**
@@ -111,6 +111,10 @@ export async function createBusiness(
         isDefault: true,
       })),
     });
+
+    // 6. Start the 14-day trial (same transaction: a business never exists
+    //    without a subscription).
+    await createTrialSubscription(business.id, tx);
 
     return { business, branch, membership, defaultAccounts };
   });

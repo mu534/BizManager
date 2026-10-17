@@ -1,69 +1,102 @@
 /**
  * Report service — SERVER ONLY.
  *
- * All reports use Prisma aggregations — no row-by-row JS summation.
- * Reports are derived from authoritative transactional records.
+ * ONE definition of period financials (see src/shared/profit.ts) is used by
+ * every report and the dashboard, so figures always agree. Previously the
+ * sales report counted only COMPLETED sales, the profit report counted
+ * COMPLETED + PARTIALLY_RETURNED, fully-returned sales vanished from revenue
+ * while their refunds were still subtracted, daily buckets were per-timestamp
+ * and "today" was a UTC day.
  *
- * Financial distinctions preserved:
- *   - Revenue ≠ Cash balance
- *   - Transfers (TRANSFER_IN/OUT) are NOT revenue or expenses
- *   - Returns reduce revenue and COGS correctly
- *   - Inventory value ≠ Profit
+ * Distinctions preserved: revenue ≠ cash balance; transfers are never revenue
+ * or expense; inventory purchases are never expenses; inventory value ≠ profit.
+ * Every report is financial data and requires OWNER/MANAGER.
  */
 import "server-only";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@server/db/prisma";
 import { appError } from "@shared/errors";
+import { requireFinancialReports } from "@server/auth/permissions";
+import { getBusinessTime } from "@server/services/business-time";
+import {
+  bucketDaily,
+  computeProfit,
+  REVENUE_SALE_STATUSES,
+  type DailyPoint,
+  type ProfitResult,
+} from "@shared/profit";
+import {
+  businessDayKey,
+  enumerateDays,
+  resolvePeriod,
+  type ResolvedPeriod,
+} from "@shared/time";
 import type { TenantContext } from "@shared/types/auth.types";
 import type { ReportFilterInput } from "@shared/validation/report.schema";
-import { resolveReportDates } from "@shared/validation/report.schema";
 
 // ─── Types ─────────────────────────────────────────────────
 
-export interface SalesReport {
-  totalRevenue: number;
-  salesCount: number;
-  totalDiscounts: number;
-  dailyBreakdown: { date: string; revenue: number; count: number }[];
-  byAccount: { accountName: string; accountType: string; amount: number }[];
+export interface PeriodInfo {
+  fromKey: string;
+  toKey: string;
 }
 
-export interface ProfitReport {
-  revenue: number;
-  cogs: number;
-  grossProfit: number;
-  operatingExpenses: number;
-  netOperatingProfit: number;
-  note: string;
+export interface PeriodFinancials extends ProfitResult {
+  salesCount: number;
+  returnsCount: number;
+  discounts: number;
+  daily: DailyPoint[];
+}
+
+export interface SalesReport {
+  period: PeriodInfo;
+  totals: {
+    sales: number;
+    refunds: number;
+    netSales: number;
+    discounts: number;
+    salesCount: number;
+    returnsCount: number;
+    averageSale: number;
+  };
+  daily: DailyPoint[];
+  byAccount: { accountName: string; accountType: string; received: number; refunded: number; net: number }[];
+}
+
+export interface ProfitReport extends ProfitResult {
+  period: PeriodInfo;
+}
+
+export interface InventoryReportItem {
+  productId: string;
+  productName: string;
+  sku: string | null;
+  quantity: number;
+  costPrice: number;
+  inventoryValue: number;
+  isLowStock: boolean;
+  isOutOfStock: boolean;
+  minStockLevel: number;
 }
 
 export interface InventoryReport {
-  items: {
-    productId: string;
-    productName: string;
-    sku: string | null;
-    quantity: number;
-    costPrice: number;
-    inventoryValue: number;
-    isLowStock: boolean;
-    minStockLevel: number;
-  }[];
+  items: InventoryReportItem[];
   totalValue: number;
   lowStockCount: number;
+  outOfStockCount: number;
 }
 
 export interface ExpensesReport {
+  period: PeriodInfo;
   total: number;
   byCategory: { categoryName: string; total: number }[];
-  dailyBreakdown: { date: string; total: number }[];
+  daily: { date: string; total: number }[];
   byAccount: { accountName: string; total: number }[];
 }
 
 // ─── Helpers ───────────────────────────────────────────────
 
-async function getBranchIds(
-  ctx: TenantContext,
-  branchId?: string,
-): Promise<string[]> {
+export async function getBranchIds(ctx: TenantContext, branchId?: string): Promise<string[]> {
   if (branchId) {
     const branch = await prisma.branch.findUnique({ where: { id: branchId } });
     if (!branch || branch.businessId !== ctx.businessId) {
@@ -78,296 +111,265 @@ async function getBranchIds(
   return branches.map((b) => b.id);
 }
 
+async function resolve(ctx: TenantContext, filters: ReportFilterInput) {
+  const biz = await getBusinessTime(ctx.businessId);
+  const period = resolvePeriod(filters, biz.offsetMinutes);
+  return { biz, period };
+}
+
+/**
+ * Shared computation behind the dashboard and the sales/profit reports.
+ * `withCost` skips the (heavier) cost queries for roles that never see profit.
+ */
+export async function computePeriodFinancials(
+  branchIds: string[],
+  period: ResolvedPeriod,
+  offsetMinutes: number,
+  opts: { withCost: boolean },
+): Promise<PeriodFinancials> {
+  const saleWhere: Prisma.SaleWhereInput = {
+    branchId: { in: branchIds },
+    status: { in: [...REVENUE_SALE_STATUSES] },
+    deletedAt: null,
+    createdAt: { gte: period.from, lte: period.to },
+  };
+  const returnWhere: Prisma.SaleReturnWhereInput = {
+    branchId: { in: branchIds },
+    status: "COMPLETED",
+    createdAt: { gte: period.from, lte: period.to },
+  };
+
+  const [sales, returns, soldItems, returnedItems, expenseAgg] = await Promise.all([
+    prisma.sale.findMany({
+      where: saleWhere,
+      select: { createdAt: true, finalTotal: true, discountAmount: true },
+    }),
+    prisma.saleReturn.findMany({
+      where: returnWhere,
+      select: { createdAt: true, totalRefund: true },
+    }),
+    opts.withCost
+      ? prisma.saleItem.findMany({
+          where: { sale: saleWhere },
+          select: { unitCost: true, quantity: true },
+        })
+      : Promise.resolve([]),
+    opts.withCost
+      ? prisma.saleReturnItem.findMany({
+          where: { stockDisposition: "RESTOCK", saleReturn: returnWhere },
+          select: { quantity: true, saleItem: { select: { unitCost: true } } },
+        })
+      : Promise.resolve([]),
+    opts.withCost
+      ? prisma.expense.aggregate({
+          where: {
+            branchId: { in: branchIds },
+            deletedAt: null,
+            expenseDate: { gte: period.fromDate, lte: period.toDate },
+          },
+          _sum: { amount: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  const salesTotal = sales.reduce((s, r) => s + r.finalTotal, 0);
+  const refundsTotal = returns.reduce((s, r) => s + r.totalRefund, 0);
+
+  const profit = computeProfit({
+    sales: salesTotal,
+    refunds: refundsTotal,
+    soldCost: soldItems.reduce((s, i) => s + i.unitCost * i.quantity, 0),
+    restockedReturnCost: returnedItems.reduce((s, i) => s + i.saleItem.unitCost * i.quantity, 0),
+    expenses: expenseAgg?._sum.amount ?? 0,
+  });
+
+  const days = enumerateDays(period.fromKey, period.toKey);
+  const daily = bucketDaily(
+    days,
+    sales.map((r) => ({ day: businessDayKey(r.createdAt, offsetMinutes), amount: r.finalTotal })),
+    returns.map((r) => ({ day: businessDayKey(r.createdAt, offsetMinutes), amount: r.totalRefund })),
+  );
+
+  return {
+    ...profit,
+    salesCount: sales.length,
+    returnsCount: returns.length,
+    discounts: sales.reduce((s, r) => s + r.discountAmount, 0),
+    daily,
+  };
+}
+
 // ─── Reports ───────────────────────────────────────────────
 
-/** Sales report: revenue, counts, discounts, daily breakdown, by-account. */
 export async function getSalesReport(
   ctx: TenantContext,
   filters: ReportFilterInput,
 ): Promise<SalesReport> {
-  const { from, to } = resolveReportDates(filters);
+  requireFinancialReports(ctx);
+  const { biz, period } = await resolve(ctx, filters);
   const branchIds = await getBranchIds(ctx, filters.branchId);
+  const f = await computePeriodFinancials(branchIds, period, biz.offsetMinutes, { withCost: false });
 
-  const baseWhere = {
+  const saleWhere: Prisma.SaleWhereInput = {
     branchId: { in: branchIds },
-    status: "COMPLETED" as const,
+    status: { in: [...REVENUE_SALE_STATUSES] },
     deletedAt: null,
-    createdAt: { gte: from, lte: to },
+    createdAt: { gte: period.from, lte: period.to },
   };
+  const [received, refunded] = await Promise.all([
+    prisma.payment.groupBy({ by: ["accountId"], where: { sale: saleWhere }, _sum: { amount: true } }),
+    prisma.saleReturn.groupBy({
+      by: ["refundAccountId"],
+      where: {
+        branchId: { in: branchIds },
+        status: "COMPLETED",
+        createdAt: { gte: period.from, lte: period.to },
+      },
+      _sum: { totalRefund: true },
+    }),
+  ]);
 
-  // Aggregate totals.
-  const totals = await prisma.sale.aggregate({
-    where: baseWhere,
-    _sum: { finalTotal: true, discountAmount: true },
-    _count: { id: true },
+  const accountIds = [
+    ...new Set([
+      ...received.map((r) => r.accountId),
+      ...refunded.flatMap((r) => (r.refundAccountId ? [r.refundAccountId] : [])),
+    ]),
+  ];
+  const accounts = await prisma.financialAccount.findMany({
+    where: { id: { in: accountIds }, businessId: ctx.businessId },
+    select: { id: true, name: true, type: true },
   });
-
-  // Daily breakdown using groupBy.
-  const dailyRaw = await prisma.sale.groupBy({
-    by: ["createdAt"],
-    where: baseWhere,
-    _sum: { finalTotal: true },
-    _count: { id: true },
-    orderBy: { createdAt: "asc" },
+  const byAccount = accounts.map((a) => {
+    const rec = received.find((r) => r.accountId === a.id)?._sum.amount ?? 0;
+    const ref = refunded.find((r) => r.refundAccountId === a.id)?._sum.totalRefund ?? 0;
+    return { accountName: a.name, accountType: a.type, received: rec, refunded: ref, net: rec - ref };
   });
-
-  // Collapse to date strings.
-  const dailyMap = new Map<string, { revenue: number; count: number }>();
-  for (const row of dailyRaw) {
-    const dateStr = row.createdAt.toISOString().slice(0, 10);
-    const existing = dailyMap.get(dateStr) ?? { revenue: 0, count: 0 };
-    dailyMap.set(dateStr, {
-      revenue: existing.revenue + (row._sum.finalTotal ?? 0),
-      count: existing.count + row._count.id,
-    });
-  }
-
-  // By-account breakdown.
-  const paymentRaw = await prisma.payment.findMany({
-    where: {
-      sale: baseWhere,
-    },
-    include: {
-      account: { select: { name: true, type: true } },
-    },
-  });
-  const accountMap = new Map<string, { accountName: string; accountType: string; amount: number }>();
-  for (const p of paymentRaw) {
-    const key = p.accountId;
-    const existing = accountMap.get(key) ?? {
-      accountName: p.account.name,
-      accountType: p.account.type,
-      amount: 0,
-    };
-    accountMap.set(key, { ...existing, amount: existing.amount + p.amount });
-  }
 
   return {
-    totalRevenue: totals._sum.finalTotal ?? 0,
-    salesCount: totals._count.id,
-    totalDiscounts: totals._sum.discountAmount ?? 0,
-    dailyBreakdown: Array.from(dailyMap.entries()).map(([date, v]) => ({
-      date,
-      ...v,
-    })),
-    byAccount: Array.from(accountMap.values()),
+    period: { fromKey: period.fromKey, toKey: period.toKey },
+    totals: {
+      sales: f.sales,
+      refunds: f.refunds,
+      netSales: f.netSales,
+      discounts: f.discounts,
+      salesCount: f.salesCount,
+      returnsCount: f.returnsCount,
+      averageSale: f.salesCount > 0 ? Math.round(f.sales / f.salesCount) : 0,
+    },
+    daily: f.daily,
+    byAccount,
   };
 }
 
 /**
- * Profit report.
- *
- * Revenue = SUM(sale.finalTotal) for COMPLETED sales (adjusted for returns)
- * COGS    = SUM(saleItem.unitCost × saleItem.quantity) for COMPLETED sales,
- *           minus returned items' cost
- * Gross Profit = Revenue − COGS
- * Operating Expenses = SUM(expense.amount) in period
- * Net Operating Profit = Gross Profit − Operating Expenses
- *
- * NOTE: This is an operational estimate only. It does not account for
- * taxes, depreciation, or non-operating income/expenses.
+ * Operating profit estimate: Net sales − COGS − Expenses (rules in profit.ts).
+ * Not an accounting statement; no tax, depreciation or non-operating items.
  */
 export async function getProfitReport(
   ctx: TenantContext,
   filters: ReportFilterInput,
 ): Promise<ProfitReport> {
-  const { from, to } = resolveReportDates(filters);
+  requireFinancialReports(ctx);
+  const { biz, period } = await resolve(ctx, filters);
   const branchIds = await getBranchIds(ctx, filters.branchId);
-
-  // Revenue: completed sales in period.
-  const revResult = await prisma.sale.aggregate({
-    where: {
-      branchId: { in: branchIds },
-      status: { in: ["COMPLETED", "PARTIALLY_RETURNED"] },
-      deletedAt: null,
-      createdAt: { gte: from, lte: to },
-    },
-    _sum: { finalTotal: true },
-  });
-  let revenue = revResult._sum.finalTotal ?? 0;
-
-  // Subtract refunds issued in period.
-  const refundResult = await prisma.saleReturn.aggregate({
-    where: {
-      branchId: { in: branchIds },
-      status: "COMPLETED",
-      createdAt: { gte: from, lte: to },
-    },
-    _sum: { totalRefund: true },
-  });
-  revenue = Math.max(0, revenue - (refundResult._sum.totalRefund ?? 0));
-
-  // COGS: sum of (unitCost × quantity) for sale items in completed sales in period.
-  const saleItems = await prisma.saleItem.findMany({
-    where: {
-      sale: {
-        branchId: { in: branchIds },
-        status: { in: ["COMPLETED", "PARTIALLY_RETURNED"] },
-        deletedAt: null,
-        createdAt: { gte: from, lte: to },
-      },
-    },
-    select: { unitCost: true, quantity: true },
-  });
-  let cogs = saleItems.reduce(
-    (sum, item) => sum + item.unitCost * item.quantity,
-    0,
-  );
-
-  // Subtract COGS for returned items (restocked only; damaged still consumed).
-  const returnedItems = await prisma.saleReturnItem.findMany({
-    where: {
-      stockDisposition: "RESTOCK",
-      saleReturn: {
-        branchId: { in: branchIds },
-        status: "COMPLETED",
-        createdAt: { gte: from, lte: to },
-      },
-    },
-    include: { saleItem: { select: { unitCost: true } } },
-  });
-  const returnedCogs = returnedItems.reduce(
-    (sum, ri) => sum + ri.saleItem.unitCost * ri.quantity,
-    0,
-  );
-  cogs = Math.max(0, cogs - returnedCogs);
-
-  const grossProfit = revenue - cogs;
-
-  // Operating expenses in period.
-  const expResult = await prisma.expense.aggregate({
-    where: {
-      branchId: { in: branchIds },
-      deletedAt: null,
-      expenseDate: { gte: from, lte: to },
-    },
-    _sum: { amount: true },
-  });
-  const operatingExpenses = expResult._sum.amount ?? 0;
-  const netOperatingProfit = grossProfit - operatingExpenses;
-
-  return {
-    revenue,
-    cogs,
-    grossProfit,
-    operatingExpenses,
-    netOperatingProfit,
-    note:
-      "This is a basic operational profit estimate based on recorded sales and expenses. " +
-      "It does not represent a full accounting statement and should not be used for tax or legal purposes.",
-  };
+  const f = await computePeriodFinancials(branchIds, period, biz.offsetMinutes, { withCost: true });
+  const { salesCount: _a, returnsCount: _b, discounts: _c, daily: _d, ...profit } = f;
+  return { period: { fromKey: period.fromKey, toKey: period.toKey }, ...profit };
 }
 
-/** Inventory report: current stock, low-stock, inventory valuation. */
+/** Current stock and valuation. Includes products that have never been stocked (qty 0). */
 export async function getInventoryReport(
   ctx: TenantContext,
   branchId?: string,
+  opts: { includeValuation?: boolean } = {},
 ): Promise<InventoryReport> {
   const targetBranchId = branchId ?? ctx.branchId;
   if (!targetBranchId) throw appError.validationError("Branch is required.");
-
-  const branch = await prisma.branch.findUnique({
-    where: { id: targetBranchId },
-  });
+  const branch = await prisma.branch.findUnique({ where: { id: targetBranchId } });
   if (!branch || branch.businessId !== ctx.businessId) {
     throw appError.tenantViolation("Branch does not belong to this business.");
   }
+  // Valuation exposes cost prices: financial permission required.
+  const includeValuation = opts.includeValuation ?? true;
+  if (includeValuation) requireFinancialReports(ctx);
 
-  const snapshots = await prisma.stockSnapshot.findMany({
-    where: { branchId: targetBranchId },
-    include: { product: { select: { id: true, name: true, sku: true, costPrice: true, minStockLevel: true, status: true } } },
-    orderBy: { product: { name: "asc" } },
+  const products = await prisma.product.findMany({
+    where: { businessId: ctx.businessId, status: "ACTIVE" },
+    select: {
+      id: true,
+      name: true,
+      sku: true,
+      costPrice: true,
+      minStockLevel: true,
+      stockSnapshots: { where: { branchId: targetBranchId }, select: { quantity: true } },
+    },
+    orderBy: { name: "asc" },
   });
 
-  const items = snapshots
-    .filter((s) => s.product.status === "ACTIVE")
-    .map((s) => ({
-      productId: s.product.id,
-      productName: s.product.name,
-      sku: s.product.sku,
-      quantity: s.quantity,
-      costPrice: s.product.costPrice,
-      inventoryValue: s.product.costPrice * s.quantity,
-      isLowStock: s.quantity <= s.product.minStockLevel,
-      minStockLevel: s.product.minStockLevel,
-    }));
+  const items: InventoryReportItem[] = products.map((p) => {
+    const quantity = p.stockSnapshots[0]?.quantity ?? 0;
+    return {
+      productId: p.id,
+      productName: p.name,
+      sku: p.sku,
+      quantity,
+      costPrice: includeValuation ? p.costPrice : 0,
+      inventoryValue: includeValuation ? p.costPrice * Math.max(0, quantity) : 0,
+      isLowStock: quantity <= p.minStockLevel,
+      isOutOfStock: quantity <= 0,
+      minStockLevel: p.minStockLevel,
+    };
+  });
 
   return {
     items,
-    totalValue: items.reduce((sum, i) => sum + i.inventoryValue, 0),
+    totalValue: items.reduce((s, i) => s + i.inventoryValue, 0),
     lowStockCount: items.filter((i) => i.isLowStock).length,
+    outOfStockCount: items.filter((i) => i.isOutOfStock).length,
   };
 }
 
-/** Expenses report: totals by category and daily breakdown. */
 export async function getExpensesReport(
   ctx: TenantContext,
   filters: ReportFilterInput,
 ): Promise<ExpensesReport> {
-  const { from, to } = resolveReportDates(filters);
+  requireFinancialReports(ctx);
+  const { period } = await resolve(ctx, filters);
   const branchIds = await getBranchIds(ctx, filters.branchId);
 
-  const where = {
+  const where: Prisma.ExpenseWhereInput = {
     branchId: { in: branchIds },
     deletedAt: null,
-    expenseDate: { gte: from, lte: to },
+    expenseDate: { gte: period.fromDate, lte: period.toDate },
   };
 
-  const totalResult = await prisma.expense.aggregate({
-    where,
-    _sum: { amount: true },
-  });
+  const [totalResult, byCategoryRaw, dailyRaw, byAccountRaw] = await Promise.all([
+    prisma.expense.aggregate({ where, _sum: { amount: true } }),
+    prisma.expense.groupBy({ by: ["categoryId"], where, _sum: { amount: true } }),
+    prisma.expense.groupBy({ by: ["expenseDate"], where, _sum: { amount: true }, orderBy: { expenseDate: "asc" } }),
+    prisma.expense.groupBy({ by: ["accountId"], where, _sum: { amount: true } }),
+  ]);
 
-  // By category.
-  const byCategoryRaw = await prisma.expense.groupBy({
-    by: ["categoryId"],
-    where,
-    _sum: { amount: true },
-  });
-  const categoryIds = byCategoryRaw.map((r) => r.categoryId);
-  const categories = await prisma.expenseCategory.findMany({
-    where: { id: { in: categoryIds } },
-    select: { id: true, name: true },
-  });
-  const catMap = new Map(categories.map((c) => [c.id, c.name]));
-  const byCategory = byCategoryRaw.map((r) => ({
-    categoryName: catMap.get(r.categoryId) ?? "Unknown",
-    total: r._sum.amount ?? 0,
-  }));
-
-  // Daily breakdown.
-  const dailyRaw = await prisma.expense.groupBy({
-    by: ["expenseDate"],
-    where,
-    _sum: { amount: true },
-    orderBy: { expenseDate: "asc" },
-  });
-  const dailyBreakdown = dailyRaw.map((r) => ({
-    date: r.expenseDate.toISOString().slice(0, 10),
-    total: r._sum.amount ?? 0,
-  }));
-
-  // By account.
-  const expenses = await prisma.expense.findMany({
-    where,
-    include: { account: { select: { name: true } } },
-  });
-  const accountMap = new Map<string, { accountName: string; total: number }>();
-  for (const e of expenses) {
-    const existing = accountMap.get(e.accountId) ?? {
-      accountName: e.account.name,
-      total: 0,
-    };
-    accountMap.set(e.accountId, {
-      ...existing,
-      total: existing.total + e.amount,
-    });
-  }
+  const [categories, accounts] = await Promise.all([
+    prisma.expenseCategory.findMany({
+      where: { id: { in: byCategoryRaw.map((r) => r.categoryId) }, businessId: ctx.businessId },
+      select: { id: true, name: true },
+    }),
+    prisma.financialAccount.findMany({
+      where: { id: { in: byAccountRaw.map((r) => r.accountId) }, businessId: ctx.businessId },
+      select: { id: true, name: true },
+    }),
+  ]);
+  const catName = new Map(categories.map((c) => [c.id, c.name]));
+  const accName = new Map(accounts.map((a) => [a.id, a.name]));
 
   return {
+    period: { fromKey: period.fromKey, toKey: period.toKey },
     total: totalResult._sum.amount ?? 0,
-    byCategory,
-    dailyBreakdown,
-    byAccount: Array.from(accountMap.values()),
+    byCategory: byCategoryRaw
+      .map((r) => ({ categoryName: catName.get(r.categoryId) ?? "Unknown", total: r._sum.amount ?? 0 }))
+      .sort((a, b) => b.total - a.total),
+    daily: dailyRaw.map((r) => ({ date: r.expenseDate.toISOString().slice(0, 10), total: r._sum.amount ?? 0 })),
+    byAccount: byAccountRaw.map((r) => ({ accountName: accName.get(r.accountId) ?? "Unknown", total: r._sum.amount ?? 0 })),
   };
 }

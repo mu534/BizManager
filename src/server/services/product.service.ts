@@ -13,8 +13,9 @@ import "server-only";
 import type { Product, StockSnapshot } from "@prisma/client";
 import { prisma } from "@server/db/prisma";
 import { appError } from "@shared/errors";
-import { Money } from "@shared/money";
 import { requireOwnerOrManager } from "@server/auth/permissions";
+import { assertWithinLimit, LIMIT_KEYS } from "@server/services/subscription.service";
+import { parseMoneyStrict } from "@shared/sale-math";
 import type { TenantContext } from "@shared/types/auth.types";
 import type {
   CreateProductInput,
@@ -85,11 +86,16 @@ export async function createProduct(
 ): Promise<Product> {
   requireOwnerOrManager(ctx);
 
+  // Server-side plan enforcement: active subscription + MAX_PRODUCTS.
+  await assertWithinLimit(ctx, LIMIT_KEYS.MAX_PRODUCTS, () =>
+    prisma.product.count({ where: { businessId: ctx.businessId, status: "ACTIVE" } }),
+  );
+
   const currency = await getBusinessCurrency(ctx.businessId);
 
   // Convert money inputs from decimal strings to integer storage units.
-  const costPrice = Money.fromMajorUnits(parseFloat(input.costPrice), currency);
-  const sellingPrice = Money.fromMajorUnits(parseFloat(input.sellingPrice), currency);
+  const costPrice = parseMoneyStrict(input.costPrice, currency, "Cost price");
+  const sellingPrice = parseMoneyStrict(input.sellingPrice, currency, "Selling price");
 
   // Check for duplicate SKU within this business.
   if (input.sku) {
@@ -161,6 +167,13 @@ export async function updateProduct(
   const product = await requireProductOwnership(productId, ctx.businessId);
   const currency = await getBusinessCurrency(ctx.businessId);
 
+  // Re-activating an archived product counts against the plan limit again.
+  if (input.status === "ACTIVE" && product.status === "ARCHIVED") {
+    await assertWithinLimit(ctx, LIMIT_KEYS.MAX_PRODUCTS, () =>
+      prisma.product.count({ where: { businessId: ctx.businessId, status: "ACTIVE" } }),
+    );
+  }
+
   // Check SKU uniqueness only if it's being changed.
   if (input.sku !== undefined && input.sku !== product.sku) {
     if (input.sku) {
@@ -218,13 +231,10 @@ export async function updateProduct(
   if (input.categoryId !== undefined) updateData.categoryId = input.categoryId ?? null;
 
   if (input.costPrice !== undefined) {
-    updateData.costPrice = Money.fromMajorUnits(parseFloat(input.costPrice), currency);
+    updateData.costPrice = parseMoneyStrict(input.costPrice, currency, "Cost price");
   }
   if (input.sellingPrice !== undefined) {
-    updateData.sellingPrice = Money.fromMajorUnits(
-      parseFloat(input.sellingPrice),
-      currency,
-    );
+    updateData.sellingPrice = parseMoneyStrict(input.sellingPrice, currency, "Selling price");
   }
 
   return prisma.product.update({
@@ -405,5 +415,59 @@ export async function findBySku(
     where: {
       businessId_sku: { businessId: ctx.businessId, sku },
     },
+  });
+}
+
+// ─── POS projection (no cost data) ─────────────────────────────────────────
+
+/**
+ * What the point of sale (and its offline replica) needs — deliberately WITHOUT
+ * costPrice. Cost is snapshotted on the server at sale time; shipping it to
+ * every till (and into IndexedDB) leaked margins to STAFF.
+ */
+export interface PosProduct {
+  id: string;
+  name: string;
+  sku: string | null;
+  barcode: string | null;
+  unit: string;
+  sellingPrice: number;
+  stockQuantity: number;
+}
+
+function toPosProduct(p: ProductWithStock): PosProduct {
+  return {
+    id: p.id,
+    name: p.name,
+    sku: p.sku,
+    barcode: p.barcode,
+    unit: p.unit,
+    sellingPrice: p.sellingPrice,
+    stockQuantity: p.stockSnapshot?.quantity ?? 0,
+  };
+}
+
+export async function searchPosProducts(ctx: TenantContext, query: string): Promise<PosProduct[]> {
+  const q = query.trim();
+  // Exact barcode first: scanners type the full code, and an exact hit must
+  // win over fuzzy matches.
+  if (q.length >= 4 && !q.includes(" ")) {
+    const exact = await findByBarcode(ctx, q);
+    if (exact && exact.status === "ACTIVE") return [toPosProduct(exact)];
+  }
+  return (await searchProducts(ctx, q)).map(toPosProduct);
+}
+
+/** Full active catalogue for the offline replica (bounded). */
+export async function listPosCatalog(ctx: TenantContext): Promise<PosProduct[]> {
+  const rows = await prisma.product.findMany({
+    where: { businessId: ctx.businessId, status: "ACTIVE" },
+    include: ctx.branchId ? { stockSnapshots: { where: { branchId: ctx.branchId } } } : undefined,
+    orderBy: { name: "asc" },
+    take: 5000,
+  });
+  return rows.map((p) => {
+    const snaps = ctx.branchId ? ((p as typeof p & { stockSnapshots: StockSnapshot[] }).stockSnapshots ?? []) : [];
+    return toPosProduct({ ...p, stockSnapshot: snaps[0] ?? null });
   });
 }
