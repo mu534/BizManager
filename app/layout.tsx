@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import type { ReactNode } from "react";
 import "./globals.css";
 import { ServiceWorkerRegistration } from "@components/layout/sw-register";
+import { ToastProvider } from "@components/ui/toast";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,16 +26,20 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+/**
+ * Root layout — wraps every route (auth, onboarding, protected /app subtree).
+ * Must NOT perform any auth checks here; authentication is handled in
+ * app/app/layout.tsx which only covers /app/* routes.
+ */
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        {/* OfflineBanner will be implemented in Phase 9 */}
         <ServiceWorkerRegistration />
-        {children}
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

@@ -1,142 +1,90 @@
 /**
- * BizManager Service Worker
+ * BizManager service worker — v3
  *
- * Caching strategy:
- * - STATIC assets (/_next/static/, /icons/, fonts): Cache-first
- * - Navigation requests: Network-first with offline fallback to /offline
- * - API routes (/api/*): Network-only — never cache authenticated responses
- * - All other requests: Network-first
+ * SECURITY: this worker must never store private business data.
+ * Earlier versions cached every successful HTML navigation and GET, which put
+ * authenticated pages (dashboard, sales, accounts) and RSC payloads into
+ * CacheStorage where they survived sign-out and could be read by the next
+ * person on a shared device.
  *
- * Business data lives in IndexedDB via Dexie — NOT in the service worker cache.
- * The service worker only caches the application shell (HTML, JS, CSS, images).
+ * Policy now:
+ *   - Static, public, content-hashed assets (/_next/static, icons, fonts): cache-first.
+ *   - Navigations: network only. If the network fails, serve the generic
+ *     /offline page (public, contains no business data).
+ *   - Everything else (API calls, RSC payloads, HTML, anything with cookies):
+ *     NOT intercepted — it goes straight to the network.
  *
- * Security: authenticated API responses are explicitly excluded from caching
- * to prevent one user's data from being served to another on shared devices.
+ * Offline selling does not depend on cached pages: the POS keeps its catalogue
+ * and queued sales in IndexedDB (cleared on sign-out; see dexie.ts).
  */
-
-const CACHE_NAME = "bizmanager-v1";
+const VERSION = "v3";
+const STATIC_CACHE = `bm-static-${VERSION}`;
 const OFFLINE_URL = "/offline";
-
-// Static assets to pre-cache on install.
-const PRECACHE_URLS = [
-  "/",
-  "/offline",
-  "/icons/icon.svg",
-];
-
-// ─── Install ─────────────────────────────────────────────────────────────────
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    (async () => {
-      const cache = await caches.open(CACHE_NAME);
-      // Pre-cache shell resources. Failures are non-fatal.
-      await Promise.allSettled(
-        PRECACHE_URLS.map((url) => cache.add(url).catch(() => null)),
-      );
-      // Activate immediately without waiting for existing clients to close.
-      await self.skipWaiting();
-    })(),
+    caches
+      .open(STATIC_CACHE)
+      .then((cache) => cache.add(new Request(OFFLINE_URL, { credentials: "omit" })))
+      .then(() => self.skipWaiting()),
   );
 });
-
-// ─── Activate ────────────────────────────────────────────────────────────────
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    (async () => {
-      // Delete old cache versions.
-      const cacheNames = await caches.keys();
-      await Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name)),
-      );
-      // Take control of all open clients.
-      await self.clients.claim();
-    })(),
+    caches
+      .keys()
+      // Delete EVERY cache from older versions — they may hold private pages.
+      .then((keys) => Promise.all(keys.filter((k) => k !== STATIC_CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim()),
   );
 });
 
-// ─── Fetch ───────────────────────────────────────────────────────────────────
+function isPublicStatic(url) {
+  return (
+    url.pathname.startsWith("/_next/static/") ||
+    url.pathname.startsWith("/icons/") ||
+    /\.(?:woff2?|ttf|otf)$/.test(url.pathname)
+  );
+}
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
-  const url = new URL(request.url);
-
-  // Skip non-GET requests.
   if (request.method !== "GET") return;
-
-  // Skip cross-origin requests.
+  const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // NEVER cache API routes — authenticated responses must not be cached.
-  if (url.pathname.startsWith("/api/")) return;
-
-  // Static Next.js assets: cache-first.
-  if (
-    url.pathname.startsWith("/_next/static/") ||
-    url.pathname.startsWith("/icons/") ||
-    url.pathname.match(/\.(png|jpg|jpeg|svg|ico|woff2|woff)$/)
-  ) {
-    event.respondWith(cacheFirst(request));
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request).catch(async () => {
+        const cached = await caches.match(OFFLINE_URL);
+        return cached ?? new Response("You are offline.", { status: 503 });
+      }),
+    );
     return;
   }
 
-  // HTML navigation requests: network-first with offline fallback.
-  if (request.headers.get("accept")?.includes("text/html")) {
-    event.respondWith(networkFirstWithFallback(request));
-    return;
+  if (isPublicStatic(url)) {
+    event.respondWith(
+      caches.match(request).then(
+        (hit) =>
+          hit ??
+          fetch(request).then((res) => {
+            if (res.ok) {
+              const copy = res.clone();
+              caches.open(STATIC_CACHE).then((c) => c.put(request, copy));
+            }
+            return res;
+          }),
+      ),
+    );
   }
-
-  // Everything else: network-first.
-  event.respondWith(networkFirst(request));
+  // All other requests are deliberately not handled.
 });
 
-// ─── Strategies ──────────────────────────────────────────────────────────────
-
-async function cacheFirst(request) {
-  const cached = await caches.match(request);
-  if (cached) return cached;
-  try {
-    const networkResponse = await fetch(request);
-    if (networkResponse.ok) {
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(request, networkResponse.clone());
-    }
-    return networkResponse;
-  } catch {
-    return new Response("Offline", { status: 503 });
+// The app asks us to drop everything on sign-out.
+self.addEventListener("message", (event) => {
+  if (event.data === "CLEAR_CACHES") {
+    event.waitUntil(caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))));
   }
-}
-
-async function networkFirst(request) {
-  try {
-    const networkResponse = await fetch(request);
-    if (networkResponse.ok) {
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(request, networkResponse.clone());
-    }
-    return networkResponse;
-  } catch {
-    const cached = await caches.match(request);
-    return cached ?? new Response("Offline", { status: 503 });
-  }
-}
-
-async function networkFirstWithFallback(request) {
-  try {
-    const networkResponse = await fetch(request);
-    if (networkResponse.ok) {
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(request, networkResponse.clone());
-    }
-    return networkResponse;
-  } catch {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-    // Return the offline page.
-    const offlinePage = await caches.match(OFFLINE_URL);
-    return offlinePage ?? new Response("You are offline", { status: 503 });
-  }
-}
+});

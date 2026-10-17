@@ -1,26 +1,142 @@
 @import "tailwindcss";
 
+/*
+ * BizManager design tokens (single source of truth).
+ *
+ * Identity: emerald → teal, deep navy ink, clean off-white canvas, cool grays,
+ * restrained cyan. Components use these tokens (bg-brand-600, text-ink-700,
+ * border-line …) rather than arbitrary colours.
+ *
+ * Spacing: Tailwind's 4px scale; page gutters 16/24/32; cards use p-4/p-5.
+ * Radius: 6 (controls) · 8 (cards) · 12 (hero surfaces). No pill-everything.
+ * Contrast: all text/background pairs below are >= 4.5:1 (body) — white on
+ * brand-600 and above, ink-700 on canvas, semantic 700 on semantic 50.
+ */
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* Brand: emerald → teal */
+  --color-brand-50: #ecfaf5;
+  --color-brand-100: #d0f3e6;
+  --color-brand-200: #a3e6d0;
+  --color-brand-300: #6dd3b6;
+  --color-brand-400: #34b898;
+  --color-brand-500: #14997f;
+  --color-brand-600: #0b7f6d;
+  --color-brand-700: #0a6659;
+  --color-brand-800: #0a5148;
+  --color-brand-900: #083f39;
+
+  /* Ink: deep navy → cool neutral grays */
+  --color-ink-950: #08121f;
+  --color-ink-900: #0d1b2e;
+  --color-ink-800: #162a43;
+  --color-ink-700: #2a405b;
+  --color-ink-600: #435a76;
+  --color-ink-500: #61778f;
+  --color-ink-400: #8a9bb0;
+  --color-ink-300: #b4c0ce;
+  --color-ink-200: #d6dee7;
+  --color-ink-100: #e9eef3;
+  --color-ink-50: #f4f7f9;
+
+  --color-canvas: #f6f9f8;
+  --color-surface: #ffffff;
+  --color-line: #dde5ea;
+  --color-line-strong: #c4d0d9;
+
+  /* Restrained cyan accent */
+  --color-accent-500: #0e9bb5;
+  --color-accent-600: #0b7f96;
+  --color-accent-50: #e8f7fa;
+
+  /* Semantic */
+  --color-success-50: #e9f8ef;
+  --color-success-600: #17803d;
+  --color-success-700: #14692f;
+  --color-warning-50: #fff6e0;
+  --color-warning-600: #a85d00;
+  --color-warning-700: #874a00;
+  --color-danger-50: #fdecec;
+  --color-danger-600: #c62828;
+  --color-danger-700: #a61f1f;
+  --color-info-50: #e8f1fb;
+  --color-info-600: #1a5fb4;
+  --color-info-700: #164f96;
+
+  --radius-control: 6px;
+  --radius-card: 8px;
+  --radius-hero: 12px;
+
+  --shadow-card: 0 1px 2px rgb(13 27 46 / 0.05), 0 1px 1px rgb(13 27 46 / 0.03);
+  --shadow-pop: 0 8px 24px rgb(13 27 46 / 0.12), 0 2px 6px rgb(13 27 46 / 0.06);
+
+  /* Breakpoints: sm 640 · md 768 · lg 1024 (sidebar appears) · xl 1280 */
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --gradient-brand: linear-gradient(135deg, #059669 0%, #0b7f6d 52%, #0e7490 100%);
+  --grid-line: rgb(13 27 46 / 0.06);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--color-canvas);
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink-900);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible keyboard focus everywhere, never on mouse click. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent-500);
+  outline-offset: 2px;
+}
+
+@utility bg-brand-gradient {
+  background-image: var(--gradient-brand);
+}
+
+/* Subtle structural grid used on hero and brand surfaces. */
+@utility bg-grid {
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+@utility bg-grid-light {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.1) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.1) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+@utility safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes bm-pulse {
+  50% { opacity: 0.5; }
+}
+
+/* Receipt printing: only #receipt is visible, sized for 80mm thermal paper. */
+@media print {
+  body * { visibility: hidden; }
+  #receipt, #receipt * { visibility: visible; }
+  #receipt { position: absolute; inset: 0 auto auto 0; width: 80mm; padding: 4mm; color: #000; background: #fff; }
 }
