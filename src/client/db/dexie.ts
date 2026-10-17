@@ -31,8 +31,6 @@ export interface LocalProduct {
   barcode: string | null;
   /** Integer smallest currency unit */
   sellingPrice: number;
-  /** Integer smallest currency unit */
-  costPrice: number;
   unit: string;
   stockQuantity: number;
   status: string;
@@ -48,8 +46,6 @@ export interface LocalSaleItem {
   productSku: string | null;
   /** Integer smallest currency unit */
   unitPrice: number;
-  /** Integer smallest currency unit */
-  unitCost: number;
   quantity: number;
   /** Integer smallest currency unit */
   discountAmount: number;
@@ -200,6 +196,17 @@ export class BizManagerDB extends Dexie {
       // Durable operation queue
       syncQueue: "id, [businessId+status], retryAt, createdAt",
     });
+
+    // v2: cost prices are no longer replicated to devices (they leaked margins
+    // to every role). Drop the old replica; it is re-seeded from the server.
+    this.version(2)
+      .stores({})
+      .upgrade(async (tx) => {
+        await tx.table("localProducts").clear();
+        await tx.table("localSales").toCollection().modify((sale: { items?: { unitCost?: number }[] }) => {
+          for (const item of sale.items ?? []) delete item.unitCost;
+        });
+      });
   }
 }
 
@@ -219,4 +226,33 @@ export function getClientId(): string {
   const id = crypto.randomUUID();
   localStorage.setItem(key, id);
   return id;
+}
+
+// ─── Sign-out hygiene ────────────────────────────────────────────────────────
+
+/** Number of locally-recorded operations that have not reached the server. */
+export async function countUnsyncedOperations(): Promise<number> {
+  const all = await db.syncQueue.toArray();
+  return all.filter((q) => q.status !== "synced").length;
+}
+
+/**
+ * Remove private business data from this device on sign-out.
+ *
+ * Always removed: the product/stock replica and already-synced records.
+ * Deliberately KEPT: operations that have not synced yet — deleting them would
+ * silently destroy sales the shopkeeper believes were recorded. They sync the
+ * next time an authorised member signs in. Returns how many were kept.
+ */
+export async function clearLocalBusinessData(): Promise<number> {
+  await db.localProducts.clear();
+  await db.syncQueue.where("status").equals("synced").delete().catch(async () => {
+    const all = await db.syncQueue.toArray();
+    await db.syncQueue.bulkDelete(all.filter((q) => q.status === "synced").map((q) => q.id));
+  });
+  const sales = await db.localSales.toArray();
+  await db.localSales.bulkDelete(sales.filter((x) => x.syncStatus === "synced").map((x) => x.id));
+  const expenses = await db.localExpenses.toArray();
+  await db.localExpenses.bulkDelete(expenses.filter((x) => x.syncStatus === "synced").map((x) => x.id));
+  return countUnsyncedOperations();
 }

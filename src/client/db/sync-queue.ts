@@ -85,6 +85,19 @@ export async function processQueue(businessId: string): Promise<void> {
   try {
     const now = Date.now();
 
+    // Recovery: if a previous run died mid-request (tab closed, crash) its items
+    // are stuck in "submitting" and would never be picked up again. We hold the
+    // in-process mutex, so none of OURS are in flight; re-queue them. A
+    // duplicate submission is harmless — the server is idempotent per
+    // syncOperationId.
+    const stuck = await db.syncQueue
+      .where("[businessId+status]")
+      .equals([businessId, "submitting"])
+      .toArray();
+    if (stuck.length > 0) {
+      await db.syncQueue.bulkPut(stuck.map((i) => ({ ...i, status: "pending" as SyncStatus })));
+    }
+
     // Fetch pending items due for processing (retryAt <= now).
     const allPending = await db.syncQueue
       .where("[businessId+status]")
@@ -122,6 +135,18 @@ export async function processQueue(businessId: string): Promise<void> {
 
       if (!response.ok) {
         // Entire batch failed (e.g. auth error, 5xx).
+        if (response.status === 401) {
+          // Signed out / session expired: nothing is wrong with the data. Keep it
+          // pending without burning retries so it syncs after the next sign-in.
+          for (const item of batch) {
+            await db.syncQueue.update(item.id, {
+              status: "pending",
+              retryAt: Date.now() + 60_000,
+              lastError: "Sign in again to sync.",
+            });
+          }
+          return;
+        }
         const errorText = `HTTP ${response.status}`;
         await revertBatchToFailed(batch, errorText);
         return;
