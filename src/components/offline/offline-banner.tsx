@@ -120,11 +120,11 @@ export function OfflineBanner({ businessId }: OfflineBannerProps) {
   if (isOffline && totalActionable === 0) {
     bannerClass = "bg-gray-600 text-white";
   } else if (hasConflict) {
-    bannerClass = "bg-red-50 border-b border-red-200 text-red-800";
+    bannerClass = "bg-danger-50 border-b border-danger-600/25 text-danger-700";
   } else if (hasSubmitting) {
-    bannerClass = "bg-green-50 border-b border-green-200 text-green-800";
+    bannerClass = "bg-success-50 border-b border-success-600/25 text-success-700";
   } else {
-    bannerClass = "bg-amber-50 border-b border-amber-200 text-amber-800";
+    bannerClass = "bg-warning-50 border-b border-warning-600/25 text-warning-700";
   }
 
   return (
