@@ -3,9 +3,17 @@
 /**
  * Firebase Authentication client helpers.
  *
- * Uses getFirebaseApp() (lazy initialisation) so a missing env var
- * does not crash the module at import time — it only throws when
- * the user actually attempts to sign in.
+ * The Auth instance and GoogleAuthProvider are initialised lazily on first
+ * use via getAuth(). getAuth() is idempotent — it always returns the same
+ * instance for a given FirebaseApp, so calling it multiple times is safe.
+ *
+ * IMPORTANT — popup gesture chain:
+ *   signInWithPopup() MUST be called in the same synchronous tick as the
+ *   user gesture (button click). Any await or setState before the call
+ *   breaks the gesture chain and the browser blocks the popup.
+ *   Pre-compute everything that requires async work (app init, token fetch)
+ *   before the user clicks, so the click handler itself is synchronous up
+ *   to the signInWithPopup call.
  */
 import {
   getAuth,
@@ -20,6 +28,15 @@ import {
 import { getFirebaseApp } from "./firebase-client";
 
 const googleProvider = new GoogleAuthProvider();
+
+/**
+ * Returns the Auth instance, initialising the FirebaseApp if needed.
+ * Safe to call at module scope — throws only if env vars are missing,
+ * which is caught at sign-in time.
+ */
+function getFirebaseAuth() {
+  return getAuth(getFirebaseApp());
+}
 
 /** Exchange a Firebase ID token for a server session cookie. */
 async function createServerSession(idToken: string): Promise<void> {
@@ -43,7 +60,7 @@ export async function signInWithEmail(
   email: string,
   password: string,
 ): Promise<void> {
-  const auth = getAuth(getFirebaseApp());
+  const auth = getFirebaseAuth();
   const credential: UserCredential = await signInWithEmailAndPassword(
     auth,
     email,
@@ -62,7 +79,7 @@ export async function signUpWithEmail(
   email: string,
   password: string,
 ): Promise<void> {
-  const auth = getAuth(getFirebaseApp());
+  const auth = getFirebaseAuth();
   const credential: UserCredential = await createUserWithEmailAndPassword(
     auth,
     email,
@@ -75,11 +92,16 @@ export async function signUpWithEmail(
 
 /**
  * Sign in with Google OAuth popup, then create a server session.
+ *
+ * MUST be called synchronously from a click handler — no awaits before
+ * this function is invoked. The browser will block the popup if it is
+ * not opened in the same tick as the user gesture.
  */
 export async function signInWithGoogle(): Promise<void> {
-  const auth = getAuth(getFirebaseApp());
+  // signInWithPopup opens the popup synchronously on the first line.
+  // Do not add any await or setState calls in the caller before invoking this.
   const credential: UserCredential = await signInWithPopup(
-    auth,
+    getFirebaseAuth(),
     googleProvider,
   );
   const idToken = await credential.user.getIdToken();
@@ -93,6 +115,5 @@ export async function signOut(): Promise<void> {
   // Clear the server-side session cookie first.
   await fetch("/api/auth/sign-out", { method: "POST" });
   // Then sign out of Firebase client-side.
-  const auth = getAuth(getFirebaseApp());
-  await firebaseSignOut(auth);
+  await firebaseSignOut(getFirebaseAuth());
 }

@@ -36,9 +36,12 @@ export default function SignInForm() {
   }
 
   async function handleGoogle() {
-    setFormState({ status: "loading" });
+    // Do NOT call setFormState before signInWithGoogle — any state update
+    // before signInWithPopup breaks the browser's user-gesture chain and
+    // causes auth/popup-blocked. Set loading state only after the popup opens.
     try {
       await signInWithGoogle();
+      setFormState({ status: "loading" });
       router.push(nextPath);
     } catch (err) {
       if (process.env.NODE_ENV === "development") {
