@@ -17,6 +17,7 @@ const nextConfig: NextConfig = {
   // Security headers for all routes
   async headers() {
     return [
+      // Default security headers — applied to every route.
       {
         source: "/(.*)",
         headers: [
@@ -24,6 +25,16 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-XSS-Protection", value: "1; mode=block" },
+          // same-origin blocks cross-origin popups from reading window.closed.
+          // Override this on auth pages below.
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+        ],
+      },
+      // Auth pages use Google sign-in popups — COOP must allow popup messaging.
+      {
+        source: "/(sign-in|sign-up)",
+        headers: [
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
         ],
       },
     ];
