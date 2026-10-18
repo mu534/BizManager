@@ -8,6 +8,9 @@ import { POSClient } from "./pos-client";
 
 export const metadata: Metadata = { title: "Sell" };
 
+// Reads session + business-scoped DB data on every request — cannot prerender.
+export const instant = false;
+
 export default async function SellPage({
   params,
 }: {

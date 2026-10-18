@@ -15,6 +15,10 @@ const ACCOUNT_TYPE_LABELS: Record<string, string> = {
   OTHER: "Other",
 };
 
+
+// Reads session + business-scoped DB data on every request — cannot prerender.
+export const instant = false;
+
 export default async function AccountsPage({ params }: { params: Promise<{ businessId: string }> }) {
   const { businessId } = await params;
   const ctx = await resolveContext(businessId).catch(() => null);

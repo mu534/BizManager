@@ -21,6 +21,10 @@ function periodLabel(range: ReportRange, from: string, to: string): string {
   return `${formatDate(`${from}T12:00:00Z`)} – ${formatDate(`${to}T12:00:00Z`)}`;
 }
 
+
+// Reads session + business-scoped DB data on every request — cannot prerender.
+export const instant = false;
+
 export default async function DashboardPage({
   params,
   searchParams,

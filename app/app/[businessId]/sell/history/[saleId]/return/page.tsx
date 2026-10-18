@@ -10,6 +10,10 @@ import { ReturnFormClient } from "./return-form-client";
 
 export const metadata: Metadata = { title: "Process Return" };
 
+
+// Reads session + business-scoped DB data on every request — cannot prerender.
+export const instant = false;
+
 export default async function ReturnPage({
   params,
 }: {

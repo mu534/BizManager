@@ -22,6 +22,10 @@ const TX: Record<string, { label: string; tone: Tone; sign: 1 | -1 }> = {
   OPENING_BALANCE: { label: "Opening balance", tone: "neutral", sign: 1 },
 };
 
+
+// Reads session + business-scoped DB data on every request — cannot prerender.
+export const instant = false;
+
 export default async function AccountDetailPage({ params, searchParams }: { params: Promise<{ businessId: string; accountId: string }>; searchParams: Promise<{ page?: string }> }) {
   const [{ businessId, accountId }, sp] = await Promise.all([params, searchParams]);
   const ctx = await resolveContext(businessId);

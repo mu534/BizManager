@@ -9,6 +9,10 @@ import { reportFilterSchema } from "@shared/validation/report.schema";
 
 export const metadata: Metadata = { title: "Sales Report" };
 
+
+// Reads session + business-scoped DB data on every request — cannot prerender.
+export const instant = false;
+
 export default async function SalesReportPage({
   params,
   searchParams,

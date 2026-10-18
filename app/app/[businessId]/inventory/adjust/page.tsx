@@ -14,6 +14,10 @@ const MOVEMENT_TYPES = [
   { value: "DAMAGE", label: "Damage / Loss", needsCost: false },
 ] as const;
 
+
+// Reads session + business-scoped DB data on every request — cannot prerender.
+export const instant = false;
+
 export default async function AdjustStockPage({
   params,
   searchParams,

@@ -8,6 +8,10 @@ import { ExpenseFormClient } from "@components/forms/ExpenseFormClient";
 
 export const metadata: Metadata = { title: "Record Expense" };
 
+
+// Reads session + business-scoped DB data on every request — cannot prerender.
+export const instant = false;
+
 export default async function NewExpensePage({
   params,
 }: {

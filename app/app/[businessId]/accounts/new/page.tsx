@@ -7,6 +7,10 @@ import { createAccountAction } from "../actions";
 
 export const metadata: Metadata = { title: "Add account" };
 
+
+// Reads session + business-scoped DB data on every request — cannot prerender.
+export const instant = false;
+
 export default async function NewAccountPage({ params }: { params: Promise<{ businessId: string }> }) {
   const { businessId } = await params;
   const ctx = await resolveContext(businessId);

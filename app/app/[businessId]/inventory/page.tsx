@@ -8,6 +8,10 @@ import { Money } from "@shared/money";
 
 export const metadata: Metadata = { title: "Inventory" };
 
+
+// Reads session + business-scoped DB data on every request — cannot prerender.
+export const instant = false;
+
 export default async function InventoryPage({
   params,
 }: {

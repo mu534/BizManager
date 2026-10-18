@@ -8,6 +8,10 @@ import { isAppError } from "@shared/errors";
 
 export const metadata: Metadata = { title: "Add Product" };
 
+
+// Reads session + business-scoped DB data on every request — cannot prerender.
+export const instant = false;
+
 export default async function NewProductPage({
   params,
 }: {

@@ -20,6 +20,10 @@ const LIMIT_LABELS: Record<string, string> = {
   MAX_TRANSACTIONS_MONTH: "Transactions / month",
 };
 
+
+// Reads session + business-scoped DB data on every request — cannot prerender.
+export const instant = false;
+
 export default async function SubscriptionPage({
   params,
 }: {

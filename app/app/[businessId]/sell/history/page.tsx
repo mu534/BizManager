@@ -15,6 +15,10 @@ const STATUS_LABELS: Record<string, string> = {
   VOIDED: "Voided",
 };
 
+
+// Reads session + business-scoped DB data on every request — cannot prerender.
+export const instant = false;
+
 export default async function SalesHistoryPage({
   params,
   searchParams,

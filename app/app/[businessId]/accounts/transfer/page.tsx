@@ -9,6 +9,10 @@ import { TransferFormClient } from "./transfer-form-client";
 
 export const metadata: Metadata = { title: "Transfer or adjust" };
 
+
+// Reads session + business-scoped DB data on every request — cannot prerender.
+export const instant = false;
+
 export default async function TransferPage({ params }: { params: Promise<{ businessId: string }> }) {
   const { businessId } = await params;
   const ctx = await resolveContext(businessId);

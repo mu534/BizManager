@@ -19,6 +19,10 @@ const TYPE_LABELS: Record<string, string> = {
   TRANSFER_OUT: "Transfer Out",
 };
 
+
+// Reads session + business-scoped DB data on every request — cannot prerender.
+export const instant = false;
+
 export default async function MovementHistoryPage({
   params,
 }: {
