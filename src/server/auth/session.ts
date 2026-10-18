@@ -17,7 +17,6 @@
  *   - path:      /
  */
 import "server-only";
-import { connection } from "next/server";
 import { cookies } from "next/headers";
 import {
   createSessionToken,
@@ -51,16 +50,16 @@ export async function setSessionCookie(userId: string): Promise<void> {
  * Never throws — callers decide what to do with a missing/invalid session.
  */
 export async function getSessionUserId(): Promise<string | null> {
-  // connection() signals to Next.js that this function reads request-time
-  // data (cookies), so every page that calls this is automatically opted
-  // into dynamic rendering. Without this, Date.now() inside verifySessionToken
-  // triggers a "blocking prerender" error in Next.js 16.
-  await connection();
   const secret = process.env.SESSION_SECRET;
   if (!secret || secret.length < 32) return null;
+  // await cookies() is the dynamic boundary — Next.js opts this request
+  // out of prerendering here. We capture Date.now() explicitly AFTER
+  // this await so it is never reachable during static prerender analysis.
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  return verifySessionToken(token, secret);
+  // Pass nowMs explicitly so verifySessionToken never calls Date.now()
+  // at a point the prerender tracer can reach it.
+  return verifySessionToken(token, secret, Date.now());
 }
 
 /**

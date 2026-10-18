@@ -8,6 +8,10 @@ import { AppShell } from "@components/layout/app-shell";
 import { visibleGroups, serializeGroups } from "@components/layout/nav-config";
 import { UserRole } from "@shared/types/auth.types";
 
+// Reads cookies → must not prerender. Suppresses instant-nav validation
+// for the entire /app/[businessId]/* subtree.
+export const instant = false;
+
 const ROLE_LABELS: Record<string, string> = {
   OWNER: "Owner",
   MANAGER: "Manager",
