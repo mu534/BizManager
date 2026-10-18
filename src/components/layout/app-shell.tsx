@@ -5,7 +5,7 @@ import { Badge } from "@components/ui/primitives";
 import { OfflineBanner } from "@components/offline/offline-banner";
 import { AccountMenu, type BusinessOption } from "./account-menu";
 import { MobileNav } from "./mobile-nav";
-import { SidebarNav } from "./nav-links";
+import { SidebarNav } from "./sidebar-nav";
 import { SyncRunner } from "./sync-runner";
 import { TopbarSearch } from "./topbar-search";
 import type { SerializedNavGroup } from "./nav-config";
