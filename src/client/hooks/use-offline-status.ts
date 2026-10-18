@@ -30,9 +30,9 @@ async function probe(): Promise<boolean> {
 }
 
 export function useOfflineStatus(): OfflineStatus {
-  const [isOffline, setIsOffline] = useState<boolean>(
-    typeof navigator !== "undefined" ? !navigator.onLine : false,
-  );
+  // Always initialise to false so server and client first-render agree.
+  // The real navigator.onLine value is read in useEffect after hydration.
+  const [isOffline, setIsOffline] = useState<boolean>(false);
   const [lastChecked, setLastChecked] = useState<Date>(new Date());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -53,6 +53,12 @@ export function useOfflineStatus(): OfflineStatus {
   }
 
   useEffect(() => {
+    // Sync to the real browser state after hydration.
+    if (!navigator.onLine) {
+      setIsOffline(true);
+      startProbeInterval();
+    }
+
     function handleOnline() {
       setIsOffline(false);
       setLastChecked(new Date());
@@ -68,11 +74,6 @@ export function useOfflineStatus(): OfflineStatus {
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
-
-    // If we start offline, begin probing immediately.
-    if (!navigator.onLine) {
-      startProbeInterval();
-    }
 
     return () => {
       window.removeEventListener("online", handleOnline);
