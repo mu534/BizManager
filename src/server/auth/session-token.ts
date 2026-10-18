@@ -47,8 +47,12 @@ export function createSessionToken(
 export function verifySessionToken(
   token: string | undefined | null,
   secret: string,
-  nowMs: number = Date.now(),
+  nowMs?: number,
 ): string | null {
+  // Resolve the current time inside the function body — NOT as a default
+  // parameter expression. Next.js 16 flags Date.now() in default params
+  // as an unstable value that blocks static prerendering.
+  const now = nowMs ?? Date.now();
   if (!token) return null;
   const parts = token.split(".");
   if (parts.length !== 4) return null;
@@ -61,6 +65,6 @@ export function verifySessionToken(
   if (expected.length !== given.length || !timingSafeEqual(expected, given)) {
     return null;
   }
-  if (Number(expiresRaw) <= Math.floor(nowMs / 1000)) return null;
+  if (Number(expiresRaw) <= Math.floor(now / 1000)) return null;
   return userId;
 }
