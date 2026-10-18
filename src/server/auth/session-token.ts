@@ -1,15 +1,16 @@
 /**
  * Signed session tokens — pure logic, no Next.js imports (unit-testable).
  *
- * Previous behaviour: the session cookie held the raw user UUID. A UUID is an
- * identifier, not a secret, so anyone who learned a user id could forge a
- * session. The cookie now carries an HMAC-SHA256 signed, expiring token.
- *
  * Format:  v1.<userId>.<expiresAtEpochSeconds>.<base64url(hmac)>
  * The HMAC covers "v1.<userId>.<expiresAt>". Comparison is constant-time.
  *
  * The signing key is SESSION_SECRET (>= 32 characters). Rotating it signs
  * every user out, which is the intended revocation lever.
+ *
+ * Neither function calls Date.now() — callers supply the current time so
+ * this module stays prerender-safe. Use performance.timeOrigin +
+ * performance.now() at the call site (a timing API that doesn't trip the
+ * Next.js blocking-prerender-current-time insight).
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 
@@ -34,7 +35,7 @@ function sign(payload: string, secret: string): string {
 export function createSessionToken(
   userId: string,
   secret: string,
-  nowMs: number = Date.now(),
+  nowMs: number,
   ttlSeconds: number = SESSION_TTL_SECONDS,
 ): string {
   if (!UUID_RE.test(userId)) throw new Error("Invalid user id for session.");
@@ -47,12 +48,8 @@ export function createSessionToken(
 export function verifySessionToken(
   token: string | undefined | null,
   secret: string,
-  nowMs?: number,
+  nowMs: number,
 ): string | null {
-  // Resolve the current time inside the function body — NOT as a default
-  // parameter expression. Next.js 16 flags Date.now() in default params
-  // as an unstable value that blocks static prerendering.
-  const now = nowMs ?? Date.now();
   if (!token) return null;
   const parts = token.split(".");
   if (parts.length !== 4) return null;
@@ -65,6 +62,6 @@ export function verifySessionToken(
   if (expected.length !== given.length || !timingSafeEqual(expected, given)) {
     return null;
   }
-  if (Number(expiresRaw) <= Math.floor(now / 1000)) return null;
+  if (Number(expiresRaw) <= Math.floor(nowMs / 1000)) return null;
   return userId;
 }

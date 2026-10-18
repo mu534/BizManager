@@ -52,14 +52,9 @@ export async function setSessionCookie(userId: string): Promise<void> {
 export async function getSessionUserId(): Promise<string | null> {
   const secret = process.env.SESSION_SECRET;
   if (!secret || secret.length < 32) return null;
-  // await cookies() is the dynamic boundary — Next.js opts this request
-  // out of prerendering here. We capture Date.now() explicitly AFTER
-  // this await so it is never reachable during static prerender analysis.
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  // Pass nowMs explicitly so verifySessionToken never calls Date.now()
-  // at a point the prerender tracer can reach it.
-  return verifySessionToken(token, secret, Date.now());
+  return verifySessionToken(token, secret, performance.timeOrigin + performance.now());
 }
 
 /**
