@@ -5,10 +5,10 @@ import { Badge } from "@components/ui/primitives";
 import { OfflineBanner } from "@components/offline/offline-banner";
 import { AccountMenu, type BusinessOption } from "./account-menu";
 import { MobileNav } from "./mobile-nav";
-import { SidebarNav } from "./nav-link";
+import { SidebarNav } from "./nav-links";
 import { SyncRunner } from "./sync-runner";
 import { TopbarSearch } from "./topbar-search";
-import type { NavGroup } from "./nav-config";
+import type { SerializedNavGroup } from "./nav-config";
 
 export interface ShellProps {
   businessId: string;
@@ -17,7 +17,7 @@ export interface ShellProps {
   roleLabel: string;
   user: { name: string; email: string | null };
   businesses: BusinessOption[];
-  groups: NavGroup[];
+  groups: SerializedNavGroup[];
   children: ReactNode;
 }
 

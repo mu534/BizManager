@@ -4,19 +4,19 @@ import {
   IconBox, IconCart, IconChart, IconDashboard, IconReceipt, IconSettings, IconTag, IconWallet,
 } from "@components/ui/icons";
 
+// ─── Internal config (server-only, contains functions) ──────────────────────
+
 export interface NavItem {
   label: string;
-  /** Path relative to /app/{businessId}. */
   path: string;
   icon: ComponentType<IconProps>;
-  /** Matches the active state for nested routes. */
   match: (pathname: string, base: string) => boolean;
-  /** Hidden from STAFF (they may sell and look up stock, not see finances). */
   financial?: boolean;
 }
 export interface NavGroup { label: string; items: NavItem[] }
 
-const prefix = (path: string) => (p: string, base: string) => p === `${base}${path}` || p.startsWith(`${base}${path}/`);
+const prefix = (path: string) => (p: string, base: string) =>
+  p === `${base}${path}` || p.startsWith(`${base}${path}/`);
 
 export const NAV_GROUPS: NavGroup[] = [
   { label: "Overview", items: [
@@ -41,5 +41,58 @@ export const NAV_GROUPS: NavGroup[] = [
 ];
 
 export function visibleGroups(canSeeFinancials: boolean): NavGroup[] {
-  return NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => canSeeFinancials || !i.financial) })).filter((g) => g.items.length > 0);
+  return NAV_GROUPS
+    .map((g) => ({ ...g, items: g.items.filter((i) => canSeeFinancials || !i.financial) }))
+    .filter((g) => g.items.length > 0);
+}
+
+// ─── Serializable types (safe to pass to Client Components) ─────────────────
+
+export type IconKey =
+  | "dashboard" | "cart" | "receipt" | "box" | "tag"
+  | "wallet" | "chart" | "settings";
+
+const ICON_KEYS: Map<ComponentType<IconProps>, IconKey> = new Map([
+  [IconDashboard, "dashboard"],
+  [IconCart,      "cart"],
+  [IconReceipt,   "receipt"],
+  [IconBox,       "box"],
+  [IconTag,       "tag"],
+  [IconWallet,    "wallet"],
+  [IconChart,     "chart"],
+  [IconSettings,  "settings"],
+]);
+
+export interface SerializedNavItem {
+  label: string;
+  path: string;
+  iconKey: IconKey;
+  /** Path prefix used to match the active state (just the relative path). */
+  matchPath: string;
+  /** Exact match only (no prefix). */
+  exact?: boolean;
+}
+
+export interface SerializedNavGroup {
+  label: string;
+  items: SerializedNavItem[];
+}
+
+/**
+ * Convert NavGroup[] → SerializedNavGroup[] — safe to pass as props to
+ * Client Components. Drops functions (icon component refs, match fns)
+ * and replaces them with serializable keys/strings.
+ */
+export function serializeGroups(groups: NavGroup[]): SerializedNavGroup[] {
+  return groups.map((g) => ({
+    label: g.label,
+    items: g.items.map((item) => ({
+      label: item.label,
+      path: item.path,
+      iconKey: ICON_KEYS.get(item.icon) ?? "dashboard",
+      // For exact match items (POS /sell), store the path as-is with exact flag.
+      matchPath: item.path,
+      exact: item.path === "/sell",
+    })),
+  }));
 }
