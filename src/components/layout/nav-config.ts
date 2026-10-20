@@ -1,7 +1,7 @@
 import type { ComponentType } from "react";
 import type { IconProps } from "@components/ui/icons";
 import {
-  IconBox, IconCart, IconChart, IconDashboard, IconReceipt, IconSettings, IconTag, IconWallet,
+  IconBox, IconCart, IconChart, IconDashboard, IconReceipt, IconSettings, IconTag, IconUsers, IconWallet,
 } from "@components/ui/icons";
 
 // ─── Internal config (server-only, contains functions) ──────────────────────
@@ -11,7 +11,15 @@ export interface NavItem {
   path: string;
   icon: ComponentType<IconProps>;
   match: (pathname: string, base: string) => boolean;
-  financial?: boolean;
+  /**
+   * Who sees this item (a navigation convenience only — every page and action
+   * still enforces access on the server):
+   *   manager   — owner or manager (operational work such as recording expenses)
+   *   financial — owner, or a manager the owner has granted report access
+   *   owner     — owner only
+   * Omitted means every member.
+   */
+  requires?: "manager" | "financial" | "owner";
 }
 export interface NavGroup { label: string; items: NavItem[] }
 
@@ -31,18 +39,34 @@ export const NAV_GROUPS: NavGroup[] = [
     { label: "Inventory", path: "/inventory", icon: IconBox, match: prefix("/inventory") },
   ] },
   { label: "Money", items: [
-    { label: "Expenses", path: "/expenses", icon: IconReceipt, match: prefix("/expenses"), financial: true },
-    { label: "Accounts", path: "/accounts", icon: IconWallet, match: prefix("/accounts"), financial: true },
-    { label: "Reports", path: "/reports", icon: IconChart, match: prefix("/reports"), financial: true },
+    { label: "Expenses", path: "/expenses", icon: IconReceipt, match: prefix("/expenses"), requires: "manager" },
+    { label: "Accounts", path: "/accounts", icon: IconWallet, match: prefix("/accounts"), requires: "financial" },
+    { label: "Reports", path: "/reports", icon: IconChart, match: prefix("/reports"), requires: "financial" },
   ] },
   { label: "Business", items: [
-    { label: "Plan & billing", path: "/settings/subscription", icon: IconSettings, match: prefix("/settings"), financial: true },
+    { label: "Team", path: "/settings/team", icon: IconUsers, match: prefix("/settings/team"), requires: "owner" },
+    { label: "Plan & billing", path: "/settings/subscription", icon: IconSettings, match: prefix("/settings/subscription"), requires: "owner" },
   ] },
 ];
 
-export function visibleGroups(canSeeFinancials: boolean): NavGroup[] {
+export interface NavCapabilities {
+  isOwner: boolean;
+  isManagerOrOwner: boolean;
+  canSeeFinancials: boolean;
+}
+
+function allowed(item: NavItem, caps: NavCapabilities): boolean {
+  switch (item.requires) {
+    case "owner": return caps.isOwner;
+    case "manager": return caps.isManagerOrOwner;
+    case "financial": return caps.canSeeFinancials;
+    default: return true;
+  }
+}
+
+export function visibleGroups(caps: NavCapabilities): NavGroup[] {
   return NAV_GROUPS
-    .map((g) => ({ ...g, items: g.items.filter((i) => canSeeFinancials || !i.financial) }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => allowed(i, caps)) }))
     .filter((g) => g.items.length > 0);
 }
 
@@ -50,7 +74,7 @@ export function visibleGroups(canSeeFinancials: boolean): NavGroup[] {
 
 export type IconKey =
   | "dashboard" | "cart" | "receipt" | "box" | "tag"
-  | "wallet" | "chart" | "settings";
+  | "wallet" | "chart" | "settings" | "users";
 
 const ICON_KEYS: Map<ComponentType<IconProps>, IconKey> = new Map([
   [IconDashboard, "dashboard"],
@@ -61,6 +85,7 @@ const ICON_KEYS: Map<ComponentType<IconProps>, IconKey> = new Map([
   [IconWallet,    "wallet"],
   [IconChart,     "chart"],
   [IconSettings,  "settings"],
+  [IconUsers,     "users"],
 ]);
 
 export interface SerializedNavItem {

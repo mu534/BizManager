@@ -7,7 +7,7 @@ import { cn } from "@components/ui/cn";
 import { Dialog } from "@components/ui/dialog";
 import {
   IconBox, IconCart, IconDashboard, IconMore, IconReceipt,
-  IconSettings, IconTag, IconWallet, IconChart,
+  IconSettings, IconTag, IconUsers, IconWallet, IconChart,
 } from "@components/ui/icons";
 import type { IconProps } from "@components/ui/icons";
 import type { SerializedNavGroup, IconKey } from "./nav-config";
@@ -22,6 +22,7 @@ const ICON_MAP: Record<IconKey, ComponentType<IconProps>> = {
   wallet:    IconWallet,
   chart:     IconChart,
   settings:  IconSettings,
+  users:     IconUsers,
 };
 
 const PRIMARY: { label: string; path: string; iconKey: IconKey; exact?: boolean }[] = [

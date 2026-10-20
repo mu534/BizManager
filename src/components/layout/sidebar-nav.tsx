@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@components/ui/cn";
 import {
   IconBox, IconCart, IconChart, IconDashboard, IconReceipt,
-  IconSettings, IconTag, IconWallet,
+  IconSettings, IconTag, IconUsers, IconWallet,
 } from "@components/ui/icons";
 import type { IconProps } from "@components/ui/icons";
 import type { SerializedNavGroup, IconKey } from "./nav-config";
@@ -20,6 +20,7 @@ const ICON_MAP: Record<IconKey, ComponentType<IconProps>> = {
   wallet:    IconWallet,
   chart:     IconChart,
   settings:  IconSettings,
+  users:     IconUsers,
 };
 
 /** Desktop sidebar navigation with active state from the current URL. */
