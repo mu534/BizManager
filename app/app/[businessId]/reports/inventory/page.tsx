@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { resolveContext } from "@server/auth/resolve-context";
 import { getInventoryReport } from "@server/services/report.service";
 import { prisma } from "@server/db/prisma";
 import { Money } from "@shared/money";
+import Link from "next/link";
+import { AccessDenied } from "@components/layout/states";
+import { canViewFinancialReports } from "@server/auth/permissions";
+import { hasFeature, FEATURE_KEYS } from "@server/services/subscription.service";
+import { ReportNav } from "@components/reports/report-nav";
 
 export const metadata: Metadata = { title: "Inventory Report" };
 
@@ -20,25 +24,37 @@ export default async function InventoryReportPage({
   const { businessId } = await params;
   const ctx = await resolveContext(businessId).catch(() => null);
   if (!ctx) redirect("/sign-in");
+  if (!canViewFinancialReports(ctx)) return <AccessDenied businessId={businessId} what="financial reports" />;
+  // Valuation (cost and value) is a Pro feature; stock levels and low stock are for every plan.
+  const valuation = await hasFeature(businessId, FEATURE_KEYS.ADVANCED_REPORTS);
 
   const branch = await prisma.branch.findFirst({ where: { businessId, isDefault: true, status: "ACTIVE" } });
   const business = await prisma.business.findUnique({ where: { id: businessId }, select: { currency: true } });
   const currency = business?.currency ?? "ETB";
   const fmt = (n: number) => Money.format(n, currency);
 
-  const report = await getInventoryReport(ctx, branch?.id);
+  const report = await getInventoryReport(ctx, branch?.id, { includeValuation: valuation });
 
   return (
     <div className="space-y-6">
       <ReportNav businessId={businessId} active="inventory" />
       <h1 className="text-xl font-semibold text-gray-900">Inventory Report</h1>
 
+      {!valuation && (
+        <p className="rounded-lg border border-line bg-ink-50 px-4 py-3 text-sm text-ink-700">
+          Inventory valuation (cost and total value) is part of the Pro plan.{" "}
+          <Link href={`/app/${businessId}/settings/subscription`} className="font-semibold text-brand-700 underline">View plans</Link>
+        </p>
+      )}
+
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        {valuation && (
         <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
           <p className="text-xs text-gray-500">Total Inventory Value</p>
           <p className="mt-1 text-xl font-semibold text-gray-900">{fmt(report.totalValue)}</p>
           <p className="text-xs text-gray-400 mt-0.5">At cost price</p>
         </div>
+        )}
         <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
           <p className="text-xs text-gray-500">Total Products</p>
           <p className="mt-1 text-xl font-semibold text-gray-900">{report.items.length}</p>
@@ -64,8 +80,8 @@ export default async function InventoryReportPage({
                 <th className="px-4 py-2.5 text-left font-medium text-gray-600">Product</th>
                 <th className="px-4 py-2.5 text-right font-medium text-gray-600">In Stock</th>
                 <th className="px-4 py-2.5 text-right font-medium text-gray-600 hidden sm:table-cell">Min Level</th>
-                <th className="px-4 py-2.5 text-right font-medium text-gray-600 hidden md:table-cell">Cost / Unit</th>
-                <th className="px-4 py-2.5 text-right font-medium text-gray-600">Value</th>
+                {valuation && <th className="px-4 py-2.5 text-right font-medium text-gray-600 hidden md:table-cell">Cost / Unit</th>}
+                {valuation && <th className="px-4 py-2.5 text-right font-medium text-gray-600">Value</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -80,8 +96,8 @@ export default async function InventoryReportPage({
                     {item.quantity}
                   </td>
                   <td className="px-4 py-2.5 text-right text-gray-500 hidden sm:table-cell">{item.minStockLevel}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-600 hidden md:table-cell">{fmt(item.costPrice)}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-900 font-medium">{fmt(item.inventoryValue)}</td>
+                  {valuation && <td className="px-4 py-2.5 text-right text-gray-600 hidden md:table-cell">{fmt(item.costPrice)}</td>}
+                  {valuation && <td className="px-4 py-2.5 text-right text-gray-900 font-medium">{fmt(item.inventoryValue)}</td>}
                 </tr>
               ))}
             </tbody>
@@ -92,21 +108,3 @@ export default async function InventoryReportPage({
   );
 }
 
-function ReportNav({ businessId, active }: { businessId: string; active: string }) {
-  const links = [
-    { href: "sales", label: "Sales" },
-    { href: "profit", label: "Profit" },
-    { href: "inventory", label: "Inventory" },
-    { href: "expenses", label: "Expenses" },
-  ];
-  return (
-    <div className="flex gap-2 overflow-x-auto">
-      {links.map((l) => (
-        <Link key={l.href} href={`/app/${businessId}/reports/${l.href}`}
-          className={`rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap ${active === l.href ? "bg-blue-600 text-white" : "border border-gray-300 text-gray-700 hover:bg-gray-50"}`}>
-          {l.label}
-        </Link>
-      ))}
-    </div>
-  );
-}

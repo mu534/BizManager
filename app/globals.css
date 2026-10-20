@@ -140,3 +140,18 @@ body {
   #receipt, #receipt * { visibility: visible; }
   #receipt { position: absolute; inset: 0 auto auto 0; width: 80mm; padding: 4mm; color: #000; background: #fff; }
 }
+
+/* ── Public site: capability marquee ──────────────────────────────────────
+ * Static and wrapping by default. The scrolling animation is only enabled for
+ * visitors who have NOT asked for reduced motion. */
+.bm-marquee-track { display: flex; }
+.bm-marquee-group { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 0.75rem; width: 100%; }
+.bm-marquee-dup { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .bm-marquee { overflow: hidden; mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent); }
+  .bm-marquee-track { width: max-content; animation: bm-marquee 45s linear infinite; }
+  .bm-marquee-group { flex-wrap: nowrap; width: auto; flex-shrink: 0; padding-right: 0.75rem; }
+  .bm-marquee-dup { display: flex; }
+  .bm-marquee:hover .bm-marquee-track, .bm-marquee:focus-within .bm-marquee-track { animation-play-state: paused; }
+}
+@keyframes bm-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }

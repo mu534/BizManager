@@ -6,7 +6,9 @@ import { getBusinessesForUser, requireBusinessMembership } from "@server/service
 import { prisma } from "@server/db/prisma";
 import { AppShell } from "@components/layout/app-shell";
 import { visibleGroups, serializeGroups } from "@components/layout/nav-config";
+import { SubscriptionBanner } from "@components/billing/subscription-banner";
 import { UserRole } from "@shared/types/auth.types";
+import { hasFinancialReportAccess } from "@shared/team-rules";
 
 // Reads cookies → must not prerender. Suppresses instant-nav validation
 // for the entire /app/[businessId]/* subtree.
@@ -42,8 +44,13 @@ export default async function BusinessLayout({
 
   if (!user || !membership) redirect("/sign-in");
 
-  const canSeeFinancials = membership.role !== UserRole.STAFF;
-  const groups = serializeGroups(visibleGroups(canSeeFinancials));
+  const groups = serializeGroups(
+    visibleGroups({
+      isOwner: membership.role === UserRole.OWNER,
+      isManagerOrOwner: membership.role !== UserRole.STAFF,
+      canSeeFinancials: hasFinancialReportAccess(membership.role, membership.canViewFinancialReports),
+    }),
+  );
 
   const businessOptions = allMemberships.map((m) => ({
     id: m.business.id,
@@ -64,6 +71,7 @@ export default async function BusinessLayout({
       businesses={businessOptions}
       groups={groups}
     >
+      <SubscriptionBanner businessId={businessId} isOwner={membership.role === UserRole.OWNER} />
       {children}
     </AppShell>
   );

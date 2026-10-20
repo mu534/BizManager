@@ -19,7 +19,6 @@ interface CartItem {
   productSku: string | null;
   unitPrice: number; // integer storage units
   defaultPrice: number;
-  unitCost: number;
   quantity: number;
   discountAmount: number;
 }
@@ -30,7 +29,6 @@ interface SearchResult {
   sku: string | null;
   barcode: string | null;
   sellingPrice: number;
-  costPrice: number;
   stockSnapshot: { quantity: number } | null;
 }
 
@@ -109,7 +107,6 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
         sku: p.sku,
         barcode: p.barcode,
         sellingPrice: p.sellingPrice,
-        costPrice: p.costPrice,
         unit: "pcs",
         stockQuantity: p.stockSnapshot?.quantity ?? 0,
         status: "ACTIVE",
@@ -159,7 +156,6 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
                 sku: p.sku,
                 barcode: p.barcode,
                 sellingPrice: p.sellingPrice,
-                costPrice: p.costPrice,
                 stockSnapshot: { quantity: p.stockQuantity },
               })),
             );
@@ -189,7 +185,6 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
           productSku: product.sku,
           unitPrice: product.sellingPrice,
           defaultPrice: product.sellingPrice,
-          unitCost: product.costPrice,
           quantity: 1,
           discountAmount: 0,
         },
@@ -274,7 +269,6 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
         productName: i.productName,
         productSku: i.productSku,
         unitPrice: i.unitPrice,
-        unitCost: i.unitCost,
         quantity: i.quantity,
         discountAmount: i.discountAmount,
       }));

@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { resolveContext } from "@server/auth/resolve-context";
 import { getExpensesReport } from "@server/services/report.service";
 import { prisma } from "@server/db/prisma";
 import { Money } from "@shared/money";
 import { reportFilterSchema } from "@shared/validation/report.schema";
+import { ReportNav } from "@components/reports/report-nav";
+import Link from "next/link";
+import { Alert } from "@components/ui/primitives";
+import { isAppError } from "@shared/errors";
+import { RangeFilter } from "@components/reports/range-filter";
 
 export const metadata: Metadata = { title: "Expenses Report" };
 
@@ -30,7 +34,23 @@ export default async function ExpensesReportPage({
   const fmt = (n: number) => Money.format(n, currency);
 
   const filters = reportFilterSchema.parse({ range: sp.range ?? "month", from: sp.from, to: sp.to });
-  const report = await getExpensesReport(ctx, filters);
+  let report: Awaited<ReturnType<typeof getExpensesReport>>;
+  try {
+    report = await getExpensesReport(ctx, filters);
+  } catch (err) {
+    if (isAppError(err) && err.code === "SUBSCRIPTION_LIMIT") {
+      return (
+        <div className="space-y-6">
+          <ReportNav businessId={businessId} active="expenses" />
+          <Alert tone="warning" title="Expense analysis is part of the Pro plan">
+            {err.message}{" "}
+            <Link href={`/app/${businessId}/settings/subscription`} className="font-semibold underline">View plans</Link>
+          </Alert>
+        </div>
+      );
+    }
+    throw err;
+  }
 
   return (
     <div className="space-y-6">
@@ -91,12 +111,12 @@ export default async function ExpensesReportPage({
       </div>
 
       {/* Daily trend */}
-      {report.dailyBreakdown.length > 0 && (
+      {report.daily.length > 0 && (
         <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-700">Daily Trend</div>
           <table className="min-w-full text-sm">
             <tbody className="divide-y divide-gray-100">
-              {report.dailyBreakdown.map((d) => (
+              {report.daily.map((d) => (
                 <tr key={d.date} className="hover:bg-gray-50">
                   <td className="px-4 py-2.5 text-gray-600">{d.date}</td>
                   <td className="px-4 py-2.5 text-right font-medium text-gray-900">{fmt(d.total)}</td>
@@ -110,41 +130,3 @@ export default async function ExpensesReportPage({
   );
 }
 
-function ReportNav({ businessId, active }: { businessId: string; active: string }) {
-  const links = [
-    { href: "sales", label: "Sales" },
-    { href: "profit", label: "Profit" },
-    { href: "inventory", label: "Inventory" },
-    { href: "expenses", label: "Expenses" },
-  ];
-  return (
-    <div className="flex gap-2 overflow-x-auto">
-      {links.map((l) => (
-        <Link key={l.href} href={`/app/${businessId}/reports/${l.href}`}
-          className={`rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap ${active === l.href ? "bg-blue-600 text-white" : "border border-gray-300 text-gray-700 hover:bg-gray-50"}`}>
-          {l.label}
-        </Link>
-      ))}
-    </div>
-  );
-}
-
-function RangeFilter({ range, from, to }: { range: string; from?: string; to?: string }) {
-  return (
-    <form method="GET" className="flex flex-wrap gap-2 items-center">
-      {(["today", "7days", "month", "custom"] as const).map((r) => (
-        <button key={r} name="range" value={r} type="submit"
-          className={`rounded px-2.5 py-1 text-xs font-medium ${range === r ? "bg-gray-900 text-white" : "border border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
-          {r === "today" ? "Today" : r === "7days" ? "7 Days" : r === "month" ? "This Month" : "Custom"}
-        </button>
-      ))}
-      {range === "custom" && (
-        <>
-          <input name="from" type="date" defaultValue={from} className="rounded border border-gray-300 px-2 py-1 text-xs" />
-          <input name="to" type="date" defaultValue={to} className="rounded border border-gray-300 px-2 py-1 text-xs" />
-          <button type="submit" className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700">Go</button>
-        </>
-      )}
-    </form>
-  );
-}

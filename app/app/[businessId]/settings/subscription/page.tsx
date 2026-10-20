@@ -1,148 +1,193 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { resolveContext } from "@server/auth/resolve-context";
-import { getSubscriptionSummary } from "@server/services/subscription.service";
 import { requireOwner } from "@server/auth/permissions";
+import { getSubscriptionSummary } from "@server/services/subscription.service";
+import { listBusinessPayments, listPurchasablePlans } from "@server/services/subscription-payment.service";
+import { PaymentForm } from "@components/billing/payment-form";
+import { Alert, Badge, Card, CardHeader, PageHeader, Table, TableWrap, Td, Th, type Tone } from "@components/ui/primitives";
+import { formatDate, formatMoney } from "@components/ui/format";
+import { PLANS, isPlanCode } from "@shared/plans";
 
 export const metadata: Metadata = { title: "Subscription" };
-
-const PLAN_FEATURES: Record<string, string> = {
-  OFFLINE_SYNC: "Offline operations",
-  MULTI_USER: "Multiple users",
-  MULTI_BRANCH: "Multiple branches",
-  ADVANCED_REPORTS: "Advanced reports",
-  TAX_TOOLS: "Tax tools",
-};
-
-const LIMIT_LABELS: Record<string, string> = {
-  MAX_PRODUCTS: "Products",
-  MAX_USERS: "Users",
-  MAX_TRANSACTIONS_MONTH: "Transactions / month",
-};
-
 
 // Reads session + business-scoped DB data on every request — cannot prerender.
 export const instant = false;
 
-export default async function SubscriptionPage({
-  params,
-}: {
-  params: Promise<{ businessId: string }>;
-}) {
+const STATE_LABEL: Record<string, { label: string; tone: Tone }> = {
+  ACTIVE: { label: "Active", tone: "success" },
+  GRACE: { label: "Grace period", tone: "warning" },
+  READ_ONLY: { label: "Expired — read-only", tone: "danger" },
+  NONE: { label: "No plan yet", tone: "neutral" },
+  CANCELLED: { label: "Cancelled", tone: "danger" },
+  SUSPENDED: { label: "Suspended", tone: "danger" },
+};
+const PAYMENT_TONE: Record<string, Tone> = { PENDING: "warning", APPROVED: "success", REJECTED: "danger" };
+const PAYMENT_LABEL: Record<string, string> = { PENDING: "Awaiting review", APPROVED: "Approved", REJECTED: "Rejected" };
+
+function instructions(): { telebirr: string | null; bank: string | null } {
+  const tNum = process.env.BILLING_TELEBIRR_NUMBER;
+  const tName = process.env.BILLING_TELEBIRR_NAME;
+  const bBank = process.env.BILLING_BANK_NAME;
+  const bAcct = process.env.BILLING_BANK_ACCOUNT;
+  const bName = process.env.BILLING_BANK_ACCOUNT_NAME;
+  return {
+    telebirr: tNum ? `${tNum}${tName ? ` (${tName})` : ""}` : null,
+    bank: bBank && bAcct ? `${bBank} — ${bAcct}${bName ? ` (${bName})` : ""}` : null,
+  };
+}
+
+export default async function SubscriptionPage({ params }: { params: Promise<{ businessId: string }> }) {
   const { businessId } = await params;
   const ctx = await resolveContext(businessId).catch(() => null);
   if (!ctx) redirect("/sign-in");
-
   requireOwner(ctx);
 
-  const summary = await getSubscriptionSummary(ctx);
-
-  if (!summary) {
-    return (
-      <div className="max-w-lg space-y-4">
-        <h1 className="text-xl font-semibold text-gray-900">Subscription</h1>
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <p className="text-sm text-gray-500">
-            No subscription found. Run the plan seed script and restart the server.
-          </p>
-          <pre className="mt-3 text-xs bg-gray-50 rounded p-2 text-gray-600">
-            npx prisma db seed
-          </pre>
-        </div>
-      </div>
-    );
-  }
-
-  const statusColors: Record<string, string> = {
-    TRIAL: "bg-blue-50 text-blue-700",
-    ACTIVE: "bg-green-50 text-green-700",
-    PAST_DUE: "bg-amber-50 text-amber-700",
-    CANCELLED: "bg-gray-100 text-gray-500",
-    EXPIRED: "bg-red-50 text-red-700",
-  };
+  const [summary, plans, payments] = await Promise.all([
+    getSubscriptionSummary(ctx),
+    listPurchasablePlans(),
+    listBusinessPayments(ctx),
+  ]);
+  const state = STATE_LABEL[summary.state] ?? { label: "Unknown", tone: "neutral" as Tone };
+  const pending = payments.find((p) => p.status === "PENDING");
+  const pay = instructions();
+  const planNames = new Map(plans.map((p) => [p.id, p.displayName] as const));
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <h1 className="text-xl font-semibold text-gray-900">Subscription</h1>
+    <div className="max-w-3xl space-y-6">
+      <PageHeader
+        title="Subscription"
+        description="Your plan, renewal date and payments. Payments are verified manually by the BizManager team."
+      />
 
-      {/* Status card */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-3">
-        <div className="flex items-center justify-between">
+      <Card>
+        <CardHeader title="Current plan" action={<Badge tone={state.tone}>{state.label}</Badge>} />
+        <dl className="grid gap-4 px-4 py-4 text-sm sm:grid-cols-3 sm:px-5">
           <div>
-            <p className="text-lg font-semibold text-gray-900">{summary.planDisplayName}</p>
-            <p className="text-sm text-gray-500">Current plan</p>
+            <dt className="text-ink-500">Plan</dt>
+            <dd className="font-semibold text-ink-900">{summary.planDisplayName ?? "—"}</dd>
           </div>
-          <span className={`inline-block rounded-full px-3 py-1 text-sm font-medium ${statusColors[summary.status] ?? "bg-gray-100 text-gray-500"}`}>
-            {summary.isInTrial
-              ? `Trial — ${summary.trialDaysRemaining ?? 0} day${summary.trialDaysRemaining !== 1 ? "s" : ""} left`
-              : summary.status}
-          </span>
-        </div>
-
-        {summary.isExpired && (
-          <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-            Your subscription has expired. Historical data remains accessible.
-            Contact support to renew your subscription.
+          <div>
+            <dt className="text-ink-500">Billing</dt>
+            <dd className="font-semibold text-ink-900">
+              {summary.billingPeriod === "YEARLY" ? "Yearly" : summary.billingPeriod === "MONTHLY" ? "Monthly" : "—"}
+            </dd>
           </div>
+          <div>
+            <dt className="text-ink-500">{summary.state === "GRACE" ? "Grace ends" : "Period ends"}</dt>
+            <dd className="font-semibold text-ink-900">
+              {summary.state === "GRACE" && summary.graceEndsAt
+                ? formatDate(summary.graceEndsAt)
+                : summary.periodEndsAt
+                  ? formatDate(summary.periodEndsAt)
+                  : "—"}
+            </dd>
+          </div>
+        </dl>
+        {summary.planCode && isPlanCode(summary.planCode) && (
+          <p className="border-t border-line px-4 py-3 text-xs text-ink-500 sm:px-5">
+            Included: {[...PLANS[summary.planCode].features].map((f) => f.replace(/_/g, " ").toLowerCase()).join(", ")}.
+          </p>
         )}
+      </Card>
 
-        {summary.isInTrial && summary.trialDaysRemaining !== null && summary.trialDaysRemaining <= 3 && (
-          <div className="rounded-md bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-            Your trial ends in {summary.trialDaysRemaining} day{summary.trialDaysRemaining !== 1 ? "s" : ""}.
-          </div>
-        )}
-      </div>
+      {summary.state === "GRACE" && (
+        <Alert tone="warning" title="Renew within the grace period">
+          Recording continues for {summary.daysRemaining} more day{summary.daysRemaining === 1 ? "" : "s"}. After that
+          you keep read-only access and data export.
+        </Alert>
+      )}
 
-      {/* Features */}
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-700">
-          Plan Features
-        </div>
-        <div className="divide-y divide-gray-100">
-          {Object.entries(PLAN_FEATURES).map(([key, label]) => {
-            const enabled = summary.features[key] ?? false;
-            return (
-              <div key={key} className="flex items-center justify-between px-4 py-3 text-sm">
-                <span className={enabled ? "text-gray-900" : "text-gray-400"}>{label}</span>
-                {enabled ? (
-                  <span className="text-green-600 font-medium">✓ Included</span>
-                ) : (
-                  <span className="text-gray-300">—</span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Limits */}
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-700">
-          Usage Limits
-        </div>
-        <div className="divide-y divide-gray-100">
-          {Object.entries(summary.limits).map(([key, value]) => (
-            <div key={key} className="flex items-center justify-between px-4 py-3 text-sm">
-              <span className="text-gray-700">{LIMIT_LABELS[key] ?? key}</span>
-              <span className="font-medium text-gray-900">
-                {value === -1 ? "Unlimited" : value.toLocaleString()}
-              </span>
+      {pending ? (
+        <Alert tone="info" title="Payment awaiting review">
+          Your {formatMoney(pending.amountMinor, pending.currency)} payment (reference {pending.reference}) was
+          submitted on {formatDate(pending.createdAt)}. You can submit another one after it has been reviewed.
+        </Alert>
+      ) : (
+        <Card>
+          <CardHeader
+            title={summary.canWrite ? "Renew or change plan" : "Choose a plan and pay"}
+            description="Pay by Telebirr or bank transfer, then upload your receipt."
+          />
+          <div className="space-y-5 px-4 py-4 sm:px-5">
+            <div className="rounded-control border border-line bg-ink-50 px-4 py-3 text-sm">
+              <p className="font-medium text-ink-800">Send your payment to</p>
+              {pay.telebirr || pay.bank ? (
+                <ul className="mt-1 space-y-0.5 text-ink-700">
+                  {pay.telebirr && <li>Telebirr: {pay.telebirr}</li>}
+                  {pay.bank && <li>Bank: {pay.bank}</li>}
+                </ul>
+              ) : (
+                <p className="mt-1 text-warning-700">
+                  Payment details have not been configured yet. Please contact support before paying.
+                </p>
+              )}
             </div>
-          ))}
-        </div>
-      </div>
+            <PaymentForm
+              businessId={businessId}
+              defaultPlan={summary.planCode ?? plans[0]?.code ?? "BASIC"}
+              plans={plans.map((p) => ({
+                code: p.code,
+                displayName: p.displayName,
+                currency: p.currency,
+                monthlyPriceMinor: p.monthlyPriceMinor,
+                yearlyPriceMinor: p.yearlyPriceMinor,
+                annualDiscountPercent: p.annualDiscountBps / 100,
+              }))}
+            />
+          </div>
+        </Card>
+      )}
 
-      {/* Upgrade notice */}
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600 space-y-2">
-        <p className="font-medium text-gray-700">Subscription payments</p>
-        <p>
-          Online subscription payment is not yet available. BizManager subscription billing
-          integration is pending payment provider selection (UD-003).
-        </p>
-        <p className="text-gray-400 text-xs">
-          Contact support at support@bizmanager.app to manage your subscription manually.
-        </p>
-      </div>
+      <Card>
+        <CardHeader title="Payment history" />
+        {payments.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-ink-500 sm:px-5">No payments submitted yet.</p>
+        ) : (
+          <TableWrap>
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Submitted</Th>
+                  <Th>Plan</Th>
+                  <Th align="right">Amount</Th>
+                  <Th>Reference</Th>
+                  <Th>Status</Th>
+                  <Th>Receipt</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((p) => (
+                  <tr key={p.id}>
+                    <Td>{formatDate(p.createdAt)}</Td>
+                    <Td>
+                      {planNames.get(p.planId) ?? "—"} · {p.billingPeriod === "YEARLY" ? "Yearly" : "Monthly"}
+                    </Td>
+                    <Td align="right">{formatMoney(p.amountMinor, p.currency)}</Td>
+                    <Td>{p.reference}</Td>
+                    <Td>
+                      <Badge tone={PAYMENT_TONE[p.status] ?? "neutral"}>{PAYMENT_LABEL[p.status] ?? p.status}</Badge>
+                      {p.status === "REJECTED" && p.rejectionReason && (
+                        <p className="mt-1 max-w-xs text-xs text-danger-700">Reason: {p.rejectionReason}</p>
+                      )}
+                    </Td>
+                    <Td>
+                      <a
+                        href={`/api/payments/${p.id}/evidence`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-brand-700 underline"
+                      >
+                        View
+                      </a>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </TableWrap>
+        )}
+      </Card>
     </div>
   );
 }

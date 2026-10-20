@@ -1,21 +1,4 @@
-/**
- * Next.js 16 Proxy (formerly middleware).
- * File: proxy.ts (renamed from middleware.ts in Next.js 16).
- *
- * Provides coarse-grained route protection:
- *   - App routes (/app/*) require a session cookie.
- *   - Auth routes (/sign-in, /sign-up) redirect authenticated users to /app.
- *   - Onboarding routes (/create-business) require a session cookie.
- *
- * IMPORTANT: The proxy verifies the session token's signature and expiry (a
- * cheap HMAC, no database). It does NOT check the user exists or has access to
- * a business — that happens in the layouts and resolveContext(). Full authorization (membership,
- * role, business access) is enforced inside each Server Action and
- * Route Handler via resolveContext().
- *
- * A user whose DB record is removed but who keeps a valid cookie is rejected
- * by the layouts and by every service call — defense in depth.
- */
+
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { verifySessionToken } from "@server/auth/session-token";
@@ -32,7 +15,11 @@ const SESSION_COOKIE_NAME = "bm_session";
 function hasValidSession(request: NextRequest): boolean {
   const secret = process.env.SESSION_SECRET;
   if (!secret || secret.length < 32) return false;
-  return verifySessionToken(request.cookies.get(SESSION_COOKIE_NAME)?.value, secret) !== null;
+  return verifySessionToken(
+      request.cookies.get(SESSION_COOKIE_NAME)?.value,
+      secret,
+      performance.timeOrigin + performance.now(),
+    ) !== null;
 }
 
 export function proxy(request: NextRequest): NextResponse {
@@ -41,7 +28,11 @@ export function proxy(request: NextRequest): NextResponse {
   const hadCookie = request.cookies.has(SESSION_COOKIE_NAME);
 
   // Protected app routes — redirect to sign-in if not authenticated.
-  if (pathname.startsWith("/app") || pathname.startsWith("/create-business")) {
+  if (
+    pathname.startsWith("/app") ||
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/create-business")
+  ) {
     if (!authenticated) {
       const signIn = new URL("/sign-in", request.url);
       // Preserve the intended destination for post-login redirect.
