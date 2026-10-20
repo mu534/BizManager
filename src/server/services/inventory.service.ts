@@ -20,6 +20,7 @@ import type {
 import { prisma } from "@server/db/prisma";
 import { appError } from "@shared/errors";
 import { parseMoneyStrict } from "@shared/sale-math";
+import { computeWeightedAverageCost } from "@shared/costing";
 import { requireOwnerOrManager } from "@server/auth/permissions";
 import { assertSubscriptionActive } from "@server/services/subscription.service";
 import { decrementStock, incrementStock } from "@server/services/ledger";
@@ -149,6 +150,33 @@ export async function recordMovement(
       if (storedQuantity < 0) {
         await decrementStock(tx, params.productId, params.branchId, -storedQuantity, product.name);
       } else {
+        // Cost-bearing receipts re-average the product cost (weighted average).
+        // Lock the product row first so two concurrent receipts cannot both
+        // average against the same stale on-hand figure.
+        if (
+          (params.type === "OPENING_STOCK" || params.type === "PURCHASE") &&
+          params.unitCost !== undefined
+        ) {
+          await tx.$queryRaw`SELECT id FROM products WHERE id = ${params.productId} FOR UPDATE`;
+          const locked = await tx.product.findUniqueOrThrow({
+            where: { id: params.productId },
+            select: { costPrice: true },
+          });
+          const onHand = await tx.stockSnapshot.aggregate({
+            where: { productId: params.productId },
+            _sum: { quantity: true },
+          });
+          const newCost = computeWeightedAverageCost({
+            onHandQuantity: Math.max(0, onHand._sum.quantity ?? 0),
+            currentUnitCost: locked.costPrice,
+            receivedQuantity: storedQuantity,
+            receivedUnitCost: params.unitCost,
+          });
+          await tx.product.update({
+            where: { id: params.productId },
+            data: { costPrice: newCost },
+          });
+        }
         await incrementStock(tx, params.productId, params.branchId, storedQuantity);
       }
 

@@ -1,318 +1,127 @@
-/**
- * Subscription service — SERVER ONLY.
- *
- * Manages BizManager SaaS subscription state.
- * IMPORTANT: This domain is completely separate from merchant finances.
- * A merchant's Cash/Telebirr balance has nothing to do with their
- * BizManager subscription payment.
- *
- * Payment gateway (UD-003) is NOT YET CONFIGURED.
- * The billing domain is implemented correctly; payment integration
- * is blocked pending the payment provider decision.
- */
+
 import "server-only";
-import type { Subscription, Plan, PlanFeature, UsageLimit } from "@prisma/client";
+import type { Subscription, Plan } from "@prisma/client";
 import { prisma } from "@server/db/prisma";
 import { appError } from "@shared/errors";
 import type { TenantContext } from "@shared/types/auth.types";
+import {
+  FEATURE_KEYS,
+  LIMIT_KEYS,
+  PLANS,
+  UNLIMITED,
+  isPlanCode,
+  minimumPlanFor,
+  planHasFeature,
+  planLimit,
+  type FeatureKey,
+  type LimitKey,
+  type PlanCode,
+} from "@shared/plans";
+import { decideAccess, type AccessDecision } from "@shared/subscription-access";
 
-const TRIAL_DAYS = 14;
+export { FEATURE_KEYS, LIMIT_KEYS };
+export type { FeatureKey, LimitKey };
 
-// ─── Feature keys ─────────────────────────────────────────────────────────────
-
-export const FEATURE_KEYS = {
-  MULTI_BRANCH: "MULTI_BRANCH",
-  ADVANCED_REPORTS: "ADVANCED_REPORTS",
-  MULTI_USER: "MULTI_USER",
-  OFFLINE_SYNC: "OFFLINE_SYNC",
-  TAX_TOOLS: "TAX_TOOLS",
-} as const;
-
-export type FeatureKey = (typeof FEATURE_KEYS)[keyof typeof FEATURE_KEYS];
-
-// ─── Limit keys ───────────────────────────────────────────────────────────────
-
-export const LIMIT_KEYS = {
-  MAX_PRODUCTS: "MAX_PRODUCTS",
-  MAX_USERS: "MAX_USERS",
-  MAX_TRANSACTIONS_MONTH: "MAX_TRANSACTIONS_MONTH",
-} as const;
-
-export type LimitKey = (typeof LIMIT_KEYS)[keyof typeof LIMIT_KEYS];
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export interface SubscriptionWithPlan extends Subscription {
-  plan: Plan & {
-    features: PlanFeature[];
-    limits: UsageLimit[];
-  };
+export interface SubscriptionAccess {
+  decision: AccessDecision;
+  subscription: (Subscription & { plan: Plan }) | null;
+  /** Resolved plan code; null when the business has never had a plan. */
+  planCode: PlanCode | null;
 }
 
-export interface SubscriptionSummary {
-  status: string;
-  planName: string;
-  planDisplayName: string;
-  trialDaysRemaining: number | null;
-  isExpired: boolean;
-  isInTrial: boolean;
-  features: Record<string, boolean>;
-  limits: Record<string, number>;
+/** Fail closed: an unrecognised stored plan name gets the lowest plan. */
+function resolvePlanCode(name: string): PlanCode {
+  return isPlanCode(name) ? name : "BASIC";
 }
-
-// ─── Service functions ────────────────────────────────────────────────────────
 
 /**
- * Create a 14-day TRIAL subscription for a newly created business.
- * Called inside the business creation transaction.
- * Requires a STARTER plan to exist — create plans via seed script first.
+ * Load the authoritative access decision for a business.
+ * `now` is injectable for tests; production callers use the server clock.
  */
-export async function createTrialSubscription(
+export async function getSubscriptionAccess(
   businessId: string,
-  tx?: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
-): Promise<Subscription> {
-  const db = tx ?? prisma;
+  now: Date = new Date(),
+): Promise<SubscriptionAccess> {
+  const [business, subscription] = await Promise.all([
+    prisma.business.findUnique({ where: { id: businessId }, select: { status: true } }),
+    prisma.subscription.findUnique({ where: { businessId }, include: { plan: true } }),
+  ]);
+  if (!business) throw appError.notFound("Business not found.");
 
-  // Find the starter plan (or any available plan).
-  const starterPlan = await db.plan.findFirst({
-    where: { name: "STARTER", isActive: true },
-  });
-
-  if (!starterPlan) {
-    // If no plan exists yet (before seed), create subscription without plan reference.
-    // This shouldn't happen in production after the seed is run.
-    throw appError.serverError(
-      "No active plans found. Run the seed script first: npx prisma db seed",
-    );
-  }
-
-  const now = new Date();
-  const trialEndsAt = new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
-
-  // Idempotent: a business has at most one subscription.
-  const already = await db.subscription.findUnique({ where: { businessId } });
-  if (already) return already;
-
-  return db.subscription.create({
-    data: {
-      businessId,
-      planId: starterPlan.id,
-      status: "TRIAL",
-      trialEndsAt,
-      currentPeriodStart: now,
-      currentPeriodEnd: trialEndsAt,
-    },
-  });
-}
-
-/**
- * Load the current subscription for the context business.
- * Returns null if no subscription exists (pre-trial state).
- */
-export async function getSubscription(
-  ctx: TenantContext,
-): Promise<SubscriptionWithPlan | null> {
-  return prisma.subscription.findUnique({
-    where: { businessId: ctx.businessId },
-    include: {
-      plan: {
-        include: {
-          features: true,
-          limits: true,
-        },
-      },
-    },
-  });
-}
-
-/**
- * Get a human-readable subscription summary.
- */
-export async function getSubscriptionSummary(
-  ctx: TenantContext,
-): Promise<SubscriptionSummary | null> {
-  const sub = await getSubscription(ctx);
-  if (!sub) return null;
-
-  const now = new Date();
-  const isExpired =
-    sub.status === "EXPIRED" ||
-    sub.status === "CANCELLED" ||
-    (sub.status === "TRIAL" && sub.trialEndsAt != null && sub.trialEndsAt < now);
-
-  const isInTrial = sub.status === "TRIAL" && !isExpired;
-
-  const trialDaysRemaining =
-    isInTrial && sub.trialEndsAt
-      ? Math.max(
-          0,
-          Math.ceil(
-            (sub.trialEndsAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-          ),
-        )
-      : null;
-
-  const features: Record<string, boolean> = {};
-  for (const f of sub.plan.features) {
-    features[f.featureKey] = f.enabled;
-  }
-
-  const limits: Record<string, number> = {};
-  for (const l of sub.plan.limits) {
-    limits[l.limitKey] = l.value;
-  }
+  const decision = decideAccess(
+    subscription
+      ? {
+          status: subscription.status,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+          trialEndsAt: subscription.trialEndsAt,
+        }
+      : null,
+    business.status !== "ACTIVE",
+    now,
+  );
 
   return {
-    status: sub.status,
-    planName: sub.plan.name,
-    planDisplayName: sub.plan.displayName,
-    trialDaysRemaining,
-    isExpired,
-    isInTrial,
-    features,
-    limits,
+    decision,
+    subscription,
+    planCode: subscription ? resolvePlanCode(subscription.plan.name) : null,
   };
 }
 
+const RESTRICTION_FALLBACK =
+  "Your subscription has ended. You can view and export your data, but new transactions are paused until you renew.";
+
+const RESTRICTION_MESSAGES: Record<string, string> = {
+  NONE: "Choose a plan and submit your payment to start recording sales, products and expenses. You can still view your data.",
+  READ_ONLY:
+    "Your subscription has ended. You can view and export your data, but new transactions are paused until you renew.",
+  CANCELLED: "Your subscription was cancelled. You can view and export your data. Renew to record new transactions.",
+  SUSPENDED: "This business is suspended. You can view and export your data. Contact support to resolve this.",
+};
+
 /**
- * Check whether the business has access to a specific feature.
- * Throws SUBSCRIPTION_LIMIT if not entitled or subscription is expired.
- *
- * NOTE: Offline sync (OFFLINE_SYNC) is available to all plans — it is
- * not a premium-only feature per the architecture requirements.
+ * Block creation of new business data unless the subscription permits writes.
+ * Reads, exports, returns/refunds review stay available so a merchant is never
+ * locked out of their own records. Throws SUBSCRIPTION_LIMIT with a message
+ * that is clearly a subscription restriction (not a network or sync failure).
  */
-export async function checkFeatureEntitlement(
+export async function assertSubscriptionActive(ctx: TenantContext): Promise<SubscriptionAccess> {
+  const access = await getSubscriptionAccess(ctx.businessId);
+  if (!access.decision.canWrite) {
+    throw appError.subscriptionLimit(
+      RESTRICTION_MESSAGES[access.decision.state] ?? RESTRICTION_FALLBACK,
+    );
+  }
+  return access;
+}
+
+/** Require a plan feature. Also requires an active (or grace) subscription. */
+export async function requireFeature(
   ctx: TenantContext,
-  featureKey: FeatureKey,
-): Promise<void> {
-  // Offline sync is always available regardless of subscription.
-  if (featureKey === FEATURE_KEYS.OFFLINE_SYNC) return;
-
-  const sub = await getSubscription(ctx);
-  if (!sub) {
+  feature: FeatureKey,
+): Promise<SubscriptionAccess> {
+  const access = await getSubscriptionAccess(ctx.businessId);
+  // Feature access for reading reports stays available in read-only states if
+  // the plan once included it; but a business with no plan has no features.
+  if (!access.planCode) {
+    throw appError.subscriptionLimit(RESTRICTION_MESSAGES.NONE ?? RESTRICTION_FALLBACK);
+  }
+  if (!planHasFeature(access.planCode, feature)) {
+    const needed = PLANS[minimumPlanFor(feature)].displayName;
     throw appError.subscriptionLimit(
-      "No active subscription found. Please set up your subscription.",
+      `Your ${PLANS[access.planCode].displayName} plan does not include this feature. Upgrade to ${needed} or higher.`,
     );
   }
+  return access;
+}
 
-  const now = new Date();
-  const isExpired =
-    sub.status === "EXPIRED" ||
-    sub.status === "CANCELLED" ||
-    (sub.status === "TRIAL" && sub.trialEndsAt != null && sub.trialEndsAt < now);
-
-  if (isExpired) {
-    throw appError.subscriptionLimit(
-      "Your subscription has expired. Please renew to continue.",
-    );
-  }
-
-  const feature = sub.plan.features.find((f) => f.featureKey === featureKey);
-  if (!feature || !feature.enabled) {
-    throw appError.subscriptionLimit(
-      `Your plan does not include ${featureKey}. Upgrade to access this feature.`,
-    );
-  }
+/** Non-throwing feature probe for UI decisions (never a substitute for requireFeature). */
+export async function hasFeature(businessId: string, feature: FeatureKey): Promise<boolean> {
+  const access = await getSubscriptionAccess(businessId);
+  return access.planCode !== null && planHasFeature(access.planCode, feature);
 }
 
 /**
- * Check whether the business is within a usage limit.
- * Throws SUBSCRIPTION_LIMIT if exceeded.
- * Does nothing if the limit is -1 (unlimited).
- */
-export async function checkUsageLimit(
-  ctx: TenantContext,
-  limitKey: LimitKey,
-  currentUsage: number,
-): Promise<void> {
-  const sub = await getSubscription(ctx);
-  if (!sub) return; // No subscription — limits not enforced during setup.
-
-  const limit = sub.plan.limits.find((l) => l.limitKey === limitKey);
-  if (!limit) return; // Limit not configured — allow.
-  if (limit.value === -1) return; // Unlimited.
-
-  if (currentUsage >= limit.value) {
-    throw appError.subscriptionLimit(
-      `You have reached the ${limitKey} limit for your plan (${limit.value}). Upgrade to continue.`,
-    );
-  }
-}
-
-/**
- * Update subscription status — for future webhook processing.
- * IMPORTANT: Status must be set server-side based on payment verification.
- * Never trust status submitted by the browser.
- */
-export async function updateSubscriptionStatus(
-  businessId: string,
-  status: "ACTIVE" | "PAST_DUE" | "CANCELLED" | "EXPIRED",
-): Promise<void> {
-  await prisma.subscription.update({
-    where: { businessId },
-    data: { status },
-  });
-}
-
-// ─── Server-side enforcement ──────────────────────────────────────────────────
-//
-// Until now the entitlement helpers above were defined but never called, and
-// createTrialSubscription() was never invoked, so no business had a
-// subscription and nothing was enforced. Enforcement now happens inside the
-// services (never in the browser), so it also covers offline-sync and API
-// callers.
-
-function isSubscriptionExpired(sub: SubscriptionWithPlan, now: Date): boolean {
-  return (
-    sub.status === "EXPIRED" ||
-    sub.status === "CANCELLED" ||
-    (sub.status === "TRIAL" && sub.trialEndsAt != null && sub.trialEndsAt < now)
-  );
-}
-
-/**
- * Load the subscription, provisioning a 14-day trial for businesses created
- * before trials were wired into business creation. Safe under concurrency:
- * the unique businessId constraint makes a racing second create fail, after
- * which the winner's row is read.
- */
-export async function ensureSubscription(
-  ctx: TenantContext,
-): Promise<SubscriptionWithPlan> {
-  const existing = await getSubscription(ctx);
-  if (existing) return existing;
-  try {
-    await createTrialSubscription(ctx.businessId);
-  } catch (err) {
-    // A concurrent request may have created it; fall through and re-read.
-    const again = await getSubscription(ctx);
-    if (again) return again;
-    throw err;
-  }
-  const created = await getSubscription(ctx);
-  if (!created) throw appError.serverError("Could not provision subscription.");
-  return created;
-}
-
-/**
- * Block creation of new business data when the trial/subscription has lapsed.
- * Reads, reports and returns/refunds stay available so a merchant is never
- * locked out of their own records.
- */
-export async function assertSubscriptionActive(
-  ctx: TenantContext,
-): Promise<SubscriptionWithPlan> {
-  const sub = await ensureSubscription(ctx);
-  if (isSubscriptionExpired(sub, new Date())) {
-    throw appError.subscriptionLimit(
-      "Your trial or subscription has ended. Renew your plan to record new sales, products and expenses.",
-    );
-  }
-  return sub;
-}
-
-/**
- * Active-subscription check plus a usage cap. `countUsage` is only invoked
+ * Active-subscription check plus a plan usage cap. `countUsage` is only invoked
  * when the plan has a finite limit, so unlimited plans cost no extra query.
  */
 export async function assertWithinLimit(
@@ -320,13 +129,48 @@ export async function assertWithinLimit(
   limitKey: LimitKey,
   countUsage: () => Promise<number>,
 ): Promise<void> {
-  const sub = await assertSubscriptionActive(ctx);
-  const limit = sub.plan.limits.find((l) => l.limitKey === limitKey);
-  if (!limit || limit.value === -1) return;
+  const access = await assertSubscriptionActive(ctx);
+  // assertSubscriptionActive guarantees a subscription (and thus a plan) here.
+  const code = access.planCode ?? "BASIC";
+  const limit = planLimit(code, limitKey);
+  if (limit === UNLIMITED) return;
   const used = await countUsage();
-  if (used >= limit.value) {
+  if (used >= limit) {
     throw appError.subscriptionLimit(
-      `You have reached the ${limitKey.replace(/_/g, " ").toLowerCase()} limit for your ${sub.plan.displayName} plan (${limit.value}). Upgrade to continue.`,
+      `You have reached the ${limitKey.replace(/_/g, " ").toLowerCase()} limit for your ${PLANS[code].displayName} plan (${limit}). Upgrade to continue.`,
     );
   }
+}
+
+// ─── Summary for the subscription page / banner ───────────────────────────
+
+export interface SubscriptionSummary {
+  state: AccessDecision["state"];
+  canWrite: boolean;
+  planCode: PlanCode | null;
+  planDisplayName: string | null;
+  billingPeriod: "MONTHLY" | "YEARLY" | null;
+  periodEndsAt: Date | null;
+  graceEndsAt: Date | null;
+  daysRemaining: number | null;
+  features: Record<FeatureKey, boolean>;
+}
+
+export async function getSubscriptionSummary(ctx: TenantContext): Promise<SubscriptionSummary> {
+  const access = await getSubscriptionAccess(ctx.businessId);
+  const features = {} as Record<FeatureKey, boolean>;
+  for (const key of Object.values(FEATURE_KEYS)) {
+    features[key] = access.planCode ? planHasFeature(access.planCode, key) : false;
+  }
+  return {
+    state: access.decision.state,
+    canWrite: access.decision.canWrite,
+    planCode: access.planCode,
+    planDisplayName: access.planCode ? PLANS[access.planCode].displayName : null,
+    billingPeriod: access.subscription?.billingPeriod ?? null,
+    periodEndsAt: access.decision.periodEndsAt,
+    graceEndsAt: access.decision.graceEndsAt,
+    daysRemaining: access.decision.daysRemaining,
+    features,
+  };
 }

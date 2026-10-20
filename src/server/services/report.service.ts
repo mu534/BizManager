@@ -1,20 +1,8 @@
-/**
- * Report service — SERVER ONLY.
- *
- * ONE definition of period financials (see src/shared/profit.ts) is used by
- * every report and the dashboard, so figures always agree. Previously the
- * sales report counted only COMPLETED sales, the profit report counted
- * COMPLETED + PARTIALLY_RETURNED, fully-returned sales vanished from revenue
- * while their refunds were still subtracted, daily buckets were per-timestamp
- * and "today" was a UTC day.
- *
- * Distinctions preserved: revenue ≠ cash balance; transfers are never revenue
- * or expense; inventory purchases are never expenses; inventory value ≠ profit.
- * Every report is financial data and requires OWNER/MANAGER.
- */
+
 import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@server/db/prisma";
+import { requireFeature, FEATURE_KEYS } from "@server/services/subscription.service";
 import { appError } from "@shared/errors";
 import { requireFinancialReports } from "@server/auth/permissions";
 import { getBusinessTime } from "@server/services/business-time";
@@ -291,7 +279,11 @@ export async function getInventoryReport(
   }
   // Valuation exposes cost prices: financial permission required.
   const includeValuation = opts.includeValuation ?? true;
-  if (includeValuation) requireFinancialReports(ctx);
+  if (includeValuation) {
+    requireFinancialReports(ctx);
+    // Inventory valuation is a Pro feature (stock levels and low stock are not).
+    await requireFeature(ctx, FEATURE_KEYS.ADVANCED_REPORTS);
+  }
 
   const products = await prisma.product.findMany({
     where: { businessId: ctx.businessId, status: "ACTIVE" },
@@ -334,6 +326,8 @@ export async function getExpensesReport(
   filters: ReportFilterInput,
 ): Promise<ExpensesReport> {
   requireFinancialReports(ctx);
+  // Expense-category analysis is a Pro feature (recording expenses is not).
+  await requireFeature(ctx, FEATURE_KEYS.ADVANCED_REPORTS);
   const { period } = await resolve(ctx, filters);
   const branchIds = await getBranchIds(ctx, filters.branchId);
 

@@ -14,6 +14,8 @@ import "server-only";
 import type { TenantContext } from "@shared/types/auth.types";
 import { UserRole } from "@shared/types/auth.types";
 import { assertMinimumRole } from "@server/services/business.service";
+import { hasFinancialReportAccess } from "@shared/team-rules";
+import { appError } from "@shared/errors";
 
 /** Require OWNER role. Throws FORBIDDEN otherwise. */
 export function requireOwner(ctx: TenantContext): void {
@@ -37,14 +39,19 @@ export function canApplyPriceOverride(ctx: TenantContext): boolean {
   return ctx.role === UserRole.OWNER || ctx.role === UserRole.MANAGER;
 }
 
-/** Only OWNER and MANAGER can view financial reports. */
+/**
+ * Financial reports, account balances and transaction history.
+ * OWNER always; MANAGER only with an explicit owner grant; STAFF never.
+ */
 export function canViewFinancialReports(ctx: TenantContext): boolean {
-  return ctx.role === UserRole.OWNER || ctx.role === UserRole.MANAGER;
+  return hasFinancialReportAccess(ctx.role, ctx.financialReportGrant);
 }
 
-/** Require OWNER or MANAGER to access financial reports. Throws FORBIDDEN for STAFF. */
+/** Throws FORBIDDEN unless the member may see financial data. */
 export function requireFinancialReports(ctx: TenantContext): void {
-  assertMinimumRole(ctx.role, UserRole.MANAGER);
+  if (!canViewFinancialReports(ctx)) {
+    throw appError.forbidden("The business owner has not given you access to financial reports.");
+  }
 }
 
 /** Only OWNER can manage users, roles, and business settings. */

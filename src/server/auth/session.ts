@@ -1,21 +1,4 @@
-/**
- * Server-side session management — SERVER ONLY.
- *
- * The session is a short-lived httpOnly cookie containing an HMAC-signed token.
- * Format: v1.<userId>.<expiresAtEpochSeconds>.<base64url(hmac)>
- *
- * The cookie stores a signed token (not the raw userId or Firebase token).
- * The proxy verifies the signature cheaply without a DB round-trip.
- * Full authorization (role, business membership) is enforced server-side
- * in layouts and route handlers via resolveContext().
- *
- * Cookie security:
- *   - httpOnly:  true  (JS cannot read it)
- *   - secure:    true in production (HTTPS only)
- *   - sameSite:  lax   (safe for most flows; strict breaks some OAuth redirects)
- *   - maxAge:    7 days
- *   - path:      /
- */
+
 import "server-only";
 import { cookies } from "next/headers";
 import {
@@ -33,7 +16,7 @@ export const SESSION_COOKIE_NAME = "bm_session";
  */
 export async function setSessionCookie(userId: string): Promise<void> {
   const secret = assertSessionSecret(process.env.SESSION_SECRET);
-  const token = createSessionToken(userId, secret);
+  const token = createSessionToken(userId, secret, performance.timeOrigin + performance.now());
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,

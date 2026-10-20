@@ -1,10 +1,4 @@
-/**
- * Business service — SERVER ONLY.
- *
- * Handles business creation and membership queries.
- * Business creation is a single atomic Prisma transaction —
- * if any step fails, nothing is committed.
- */
+
 import "server-only";
 import type {
   Business,
@@ -14,7 +8,6 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@server/db/prisma";
 import { appError } from "@shared/errors";
-import { createTrialSubscription } from "@server/services/subscription.service";
 import type { CreateBusinessInput } from "@shared/validation/business.schema";
 import { UserRole } from "@shared/types/auth.types";
 
@@ -112,9 +105,8 @@ export async function createBusiness(
       })),
     });
 
-    // 6. Start the 14-day trial (same transaction: a business never exists
-    //    without a subscription).
-    await createTrialSubscription(business.id, tx);
+    // 6. No subscription is created here. Access to recording is granted only
+    //    when the owner's manual payment is approved by a platform administrator.
 
     return { business, branch, membership, defaultAccounts };
   });

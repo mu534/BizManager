@@ -60,6 +60,7 @@ export async function resolveContext(
     businessId,
     membershipId: membership.id,
     role: membership.role as UserRole,
+    financialReportGrant: membership.canViewFinancialReports,
     branchId: resolvedBranchId,
   };
 }
