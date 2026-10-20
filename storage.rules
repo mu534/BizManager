@@ -1,0 +1,11 @@
+rules_version = '2';
+// Payment receipts are private. Only the server (Firebase Admin SDK, which
+// bypasses these rules) reads or writes objects, after its own authorization
+// checks. Deny every direct client access.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

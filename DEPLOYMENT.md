@@ -121,3 +121,31 @@ npx sharp-cli -i public/icons/icon.svg -o public/icons/icon-512.png resize 512 5
 - [ ] Cookie `secure: true` is set (automatic in production)
 - [ ] `FIREBASE_PRIVATE_KEY` stored as a secret, not a plain env var
 - [ ] Payment webhook secrets validated before processing (when integrated)
+
+---
+
+## Manual subscription billing and platform console
+
+BizManager collects subscription payments **manually** (Telebirr / bank transfer).
+There is no payment gateway and no automatic verification.
+
+1. **Apply the migration** `20261018200000_manual_subscription_payments`
+   (`npx prisma migrate deploy`), then run `npx prisma db seed` to create the
+   BASIC / PRO / BUSINESS plan rows. The migration renames the previous
+   STARTER / BUSINESS / PRO plans in place (old BUSINESS → PRO, old PRO →
+   BUSINESS, STARTER → BASIC) so existing subscriptions keep their plan link.
+   It also adds two partial unique indexes that Prisma cannot model (one pending
+   payment per business; one live use per transfer reference). Run
+   `prisma migrate dev` against a scratch database before production to confirm
+   it applies cleanly.
+2. **Receipt storage.** Set `FIREBASE_STORAGE_BUCKET` and deploy `storage.rules`
+   (`firebase deploy --only storage`) so clients cannot read objects directly.
+   Receipts are served only through `/api/payments/[id]/evidence`.
+3. **Payment instructions.** Set the `BILLING_*` variables so owners see where to send money.
+4. **First administrator.** Sign up normally, then run
+   `npx tsx scripts/grant-platform-admin.ts grant you@example.com SUPER_ADMIN`.
+   The console is at `/admin`. Platform admins have no access to any business's
+   sales, expenses or reports.
+5. **Pricing.** Default ETB prices and a 20 % yearly discount are seeded. Change
+   them at `/admin/plans` (super administrator). They are defaults chosen to
+   launch with, not a market-tested decision — review them before going live.

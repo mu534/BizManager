@@ -1,127 +1,41 @@
 /**
- * Prisma seed script — creates default plans.
+ * Prisma seed — creates the three BizManager plans if they are missing.
  *
- * Run with: npx prisma db seed
+ * Run with: npx prisma db seed       (idempotent)
  *
- * This script is idempotent — safe to run multiple times.
- * It uses upsert so existing data is preserved.
+ * Feature entitlements and limits are NOT stored in the database; they live in
+ * src/shared/plans.ts. This seed only creates plan rows with DEFAULT prices.
+ * It never overwrites a price or discount that an administrator has changed:
+ * existing rows only get their display name / sort order refreshed.
  */
 import { PrismaClient } from "@prisma/client";
+import { DEFAULT_ANNUAL_DISCOUNT_BPS, DEFAULT_CURRENCY, PLANS, PLAN_CODES } from "../src/shared/plans";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("Seeding plans...");
-
-  // ── STARTER plan ────────────────────────────────────────────────────────────
-  const starter = await prisma.plan.upsert({
-    where: { name: "STARTER" },
-    update: { displayName: "Starter", isActive: true },
-    create: { name: "STARTER", displayName: "Starter", isActive: true },
-  });
-
-  await prisma.planFeature.upsert({
-    where: { planId_featureKey: { planId: starter.id, featureKey: "OFFLINE_SYNC" } },
-    update: { enabled: true },
-    create: { planId: starter.id, featureKey: "OFFLINE_SYNC", enabled: true },
-  });
-  await prisma.planFeature.upsert({
-    where: { planId_featureKey: { planId: starter.id, featureKey: "MULTI_USER" } },
-    update: { enabled: false },
-    create: { planId: starter.id, featureKey: "MULTI_USER", enabled: false },
-  });
-  await prisma.planFeature.upsert({
-    where: { planId_featureKey: { planId: starter.id, featureKey: "MULTI_BRANCH" } },
-    update: { enabled: false },
-    create: { planId: starter.id, featureKey: "MULTI_BRANCH", enabled: false },
-  });
-  await prisma.planFeature.upsert({
-    where: { planId_featureKey: { planId: starter.id, featureKey: "ADVANCED_REPORTS" } },
-    update: { enabled: false },
-    create: { planId: starter.id, featureKey: "ADVANCED_REPORTS", enabled: false },
-  });
-
-  await prisma.usageLimit.upsert({
-    where: { planId_limitKey: { planId: starter.id, limitKey: "MAX_PRODUCTS" } },
-    update: { value: 200 },
-    create: { planId: starter.id, limitKey: "MAX_PRODUCTS", value: 200 },
-  });
-  await prisma.usageLimit.upsert({
-    where: { planId_limitKey: { planId: starter.id, limitKey: "MAX_USERS" } },
-    update: { value: 1 },
-    create: { planId: starter.id, limitKey: "MAX_USERS", value: 1 },
-  });
-  await prisma.usageLimit.upsert({
-    where: { planId_limitKey: { planId: starter.id, limitKey: "MAX_TRANSACTIONS_MONTH" } },
-    update: { value: 500 },
-    create: { planId: starter.id, limitKey: "MAX_TRANSACTIONS_MONTH", value: 500 },
-  });
-
-  // ── BUSINESS plan ───────────────────────────────────────────────────────────
-  const business = await prisma.plan.upsert({
-    where: { name: "BUSINESS" },
-    update: { displayName: "Business", isActive: true },
-    create: { name: "BUSINESS", displayName: "Business", isActive: true },
-  });
-
-  for (const key of ["OFFLINE_SYNC", "MULTI_USER", "ADVANCED_REPORTS"]) {
-    await prisma.planFeature.upsert({
-      where: { planId_featureKey: { planId: business.id, featureKey: key } },
-      update: { enabled: true },
-      create: { planId: business.id, featureKey: key, enabled: true },
+  for (const code of PLAN_CODES) {
+    const def = PLANS[code];
+    await prisma.plan.upsert({
+      where: { name: code },
+      update: { displayName: def.displayName, sortOrder: def.rank },
+      create: {
+        name: code,
+        displayName: def.displayName,
+        isActive: true,
+        monthlyPriceMinor: def.defaultMonthlyPriceMinor,
+        annualDiscountBps: DEFAULT_ANNUAL_DISCOUNT_BPS,
+        currency: DEFAULT_CURRENCY,
+        sortOrder: def.rank,
+      },
     });
+    console.log(`Plan ready: ${code}`);
   }
-  await prisma.planFeature.upsert({
-    where: { planId_featureKey: { planId: business.id, featureKey: "MULTI_BRANCH" } },
-    update: { enabled: false },
-    create: { planId: business.id, featureKey: "MULTI_BRANCH", enabled: false },
-  });
-
-  await prisma.usageLimit.upsert({
-    where: { planId_limitKey: { planId: business.id, limitKey: "MAX_PRODUCTS" } },
-    update: { value: 2000 },
-    create: { planId: business.id, limitKey: "MAX_PRODUCTS", value: 2000 },
-  });
-  await prisma.usageLimit.upsert({
-    where: { planId_limitKey: { planId: business.id, limitKey: "MAX_USERS" } },
-    update: { value: 5 },
-    create: { planId: business.id, limitKey: "MAX_USERS", value: 5 },
-  });
-  await prisma.usageLimit.upsert({
-    where: { planId_limitKey: { planId: business.id, limitKey: "MAX_TRANSACTIONS_MONTH" } },
-    update: { value: -1 },
-    create: { planId: business.id, limitKey: "MAX_TRANSACTIONS_MONTH", value: -1 },
-  });
-
-  // ── PRO plan ────────────────────────────────────────────────────────────────
-  const pro = await prisma.plan.upsert({
-    where: { name: "PRO" },
-    update: { displayName: "Pro", isActive: true },
-    create: { name: "PRO", displayName: "Pro", isActive: true },
-  });
-
-  for (const key of ["OFFLINE_SYNC", "MULTI_USER", "ADVANCED_REPORTS", "MULTI_BRANCH", "TAX_TOOLS"]) {
-    await prisma.planFeature.upsert({
-      where: { planId_featureKey: { planId: pro.id, featureKey: key } },
-      update: { enabled: true },
-      create: { planId: pro.id, featureKey: key, enabled: true },
-    });
-  }
-
-  for (const [key, value] of [["MAX_PRODUCTS", -1], ["MAX_USERS", -1], ["MAX_TRANSACTIONS_MONTH", -1]] as [string, number][]) {
-    await prisma.usageLimit.upsert({
-      where: { planId_limitKey: { planId: pro.id, limitKey: key } },
-      update: { value },
-      create: { planId: pro.id, limitKey: key, value },
-    });
-  }
-
-  console.log("✓ Plans seeded: STARTER, BUSINESS, PRO");
 }
 
 main()
-  .catch((e) => {
-    console.error(e);
+  .catch((err) => {
+    console.error(err);
     process.exit(1);
   })
   .finally(() => prisma.$disconnect());

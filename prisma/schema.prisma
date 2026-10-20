@@ -176,6 +176,13 @@ model User {
   /// Sale returns created by this user.
   saleReturns SaleReturn[]
 
+  /// Subscription payments this user submitted / reviewed (platform billing).
+  submittedPayments SubscriptionPayment[] @relation("PaymentSubmitter")
+  reviewedPayments  SubscriptionPayment[] @relation("PaymentReviewer")
+
+  /// Platform-operator grant, if any. Separate from business roles.
+  platformAdmin PlatformAdmin?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -219,6 +226,9 @@ model Business {
 
   /// SaaS subscription — one per business (Phase 11).
   subscription Subscription?
+
+  /// Manual subscription payments submitted for this business.
+  subscriptionPayments SubscriptionPayment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -269,6 +279,11 @@ model BusinessMember {
   businessId String
   role       UserRole
   status     MemberStatus @default(ACTIVE)
+
+  /// Owner-controlled grant: lets a MANAGER see financial reports, account
+  /// balances and transaction history. Ignored for OWNER (always allowed) and
+  /// STAFF (never allowed). Cleared on demotion or deactivation.
+  canViewFinancialReports Boolean @default(false)
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Restrict)
   business Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
@@ -935,13 +950,25 @@ enum PaymentStatus {
   REFUNDED
 }
 
-/// A BizManager subscription plan (STARTER, BUSINESS, PRO).
-/// Plan details are configured in the database — not hardcoded.
+/// A BizManager subscription plan (BASIC, PRO, BUSINESS).
+/// Feature entitlements and limits are defined in src/shared/plans.ts (the
+/// single source of truth). This table holds the admin-editable commercial
+/// settings: price, annual discount and availability.
+/// PlanFeature / UsageLimit below are DEPRECATED and no longer read.
 model Plan {
   id          String  @id @default(uuid())
-  name        String  @unique // STARTER, BUSINESS, PRO
+  name        String  @unique // BASIC, PRO, BUSINESS
   displayName String
   isActive    Boolean @default(true)
+
+  /// Monthly price in smallest currency unit (ETB cents).
+  monthlyPriceMinor Int    @default(0)
+  /// Yearly discount in basis points (2000 = 20%).
+  annualDiscountBps Int    @default(0)
+  currency          String @default("ETB")
+  sortOrder         Int    @default(0)
+
+  payments SubscriptionPayment[]
 
   features      PlanFeature[]
   limits        UsageLimit[]
@@ -990,6 +1017,7 @@ model Subscription {
   currentPeriodStart DateTime
   currentPeriodEnd   DateTime
   cancelledAt        DateTime?
+  billingPeriod      BillingPeriod?
 
   business Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
   plan     Plan      @relation(fields: [planId], references: [id], onDelete: Restrict)
@@ -1038,6 +1066,118 @@ model PlatformPayment {
   createdAt DateTime @default(now())
 
   @@map("platform_payments")
+}
+
+
+// =============================================================
+// MANUAL SUBSCRIPTION PAYMENTS (Telebirr / bank transfer)
+// =============================================================
+// BizManager does not verify transfers automatically. A customer submits a
+// reference and receipt; a platform administrator approves or rejects it.
+// Only an approval (performed server-side) grants a subscription period.
+
+enum BillingPeriod {
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionPaymentMethod {
+  TELEBIRR
+  BANK_TRANSFER
+}
+
+enum SubscriptionPaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PlatformAdminRole {
+  SUPER_ADMIN
+  FINANCE
+  SUPPORT
+}
+
+model SubscriptionPayment {
+  id          String @id @default(uuid())
+  businessId  String
+  planId      String
+  billingPeriod BillingPeriod
+
+  /// Amount the customer was asked to pay, fixed at submission from server-side
+  /// pricing (never taken from the client).
+  amountMinor Int
+  currency    String
+
+  method              SubscriptionPaymentMethod
+  /// Reference exactly as entered by the customer.
+  reference           String
+  /// Upper-cased, whitespace-free form used for duplicate detection.
+  referenceNormalized String
+
+  /// Private object key in Firebase Storage. Never a public URL.
+  evidenceKey         String
+  evidenceContentType String
+  evidenceBytes       Int
+
+  status          SubscriptionPaymentStatus @default(PENDING)
+  rejectionReason String?
+
+  submittedById String
+  reviewedById  String?
+  reviewedAt    DateTime?
+
+  /// Period granted on approval.
+  periodStart DateTime?
+  periodEnd   DateTime?
+
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  plan        Plan     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  submittedBy User     @relation("PaymentSubmitter", fields: [submittedById], references: [id], onDelete: Restrict)
+  reviewedBy  User?    @relation("PaymentReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // NOTE: two PARTIAL unique indexes are created in the migration SQL because
+  // Prisma cannot express them:
+  //   - one PENDING payment per business
+  //   - a (method, referenceNormalized) pair may be used by only one
+  //     non-rejected payment (blocks reusing the same transfer twice)
+  @@index([businessId, createdAt])
+  @@index([status, createdAt])
+  @@map("subscription_payments")
+}
+
+/// Platform operator grant. Entirely separate from BusinessMember roles: being a
+/// platform admin gives no access to any tenant's sales or financial data.
+model PlatformAdmin {
+  id        String            @id @default(uuid())
+  userId    String            @unique
+  role      PlatformAdminRole
+  createdAt DateTime          @default(now())
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("platform_admins")
+}
+
+/// Append-only audit trail for sensitive platform actions.
+model PlatformAuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String
+  action      String
+  targetType  String
+  targetId    String
+  businessId  String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([businessId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+  @@map("platform_audit_logs")
 }
 
 // =============================================================
