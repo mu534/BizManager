@@ -6,14 +6,6 @@ const nextConfig: NextConfig = {
   experimental: {
     agentFeedback: true,
   },
-  turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
-      },
-    },
-  },
   // Security headers for all routes
   async headers() {
     return [

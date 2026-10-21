@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import type { ButtonHTMLAttributes, ComponentProps, ReactNode } from "react";
 import { cn } from "./cn";

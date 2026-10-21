@@ -12,6 +12,8 @@ import { appError } from "@shared/errors";
 import { canViewFinancialReports } from "@server/auth/permissions";
 import { getBusinessTime } from "@server/services/business-time";
 import { computePeriodFinancials, getInventoryReport } from "@server/services/report.service";
+import { getSubscriptionAccess, FEATURE_KEYS } from "@server/services/subscription.service";
+import { planHasFeature } from "@shared/plans";
 import type { DailyPoint, ProfitResult } from "@shared/profit";
 import { resolvePeriod, type ReportRange } from "@shared/time";
 import type { TenantContext } from "@shared/types/auth.types";
@@ -66,6 +68,15 @@ export async function getDashboard(
   const period = resolvePeriod({ range }, biz.offsetMinutes);
   const branchIds = [branch.id];
 
+  // Inventory valuation requires both financial permission (role) AND
+  // the ADVANCED_REPORTS feature (Pro+ plan). Check the plan without throwing
+  // so Basic-plan users still get the dashboard with valuation hidden.
+  const subscriptionAccess = await getSubscriptionAccess(ctx.businessId);
+  const planSupportsValuation =
+    subscriptionAccess.planCode !== null &&
+    planHasFeature(subscriptionAccess.planCode, FEATURE_KEYS.ADVANCED_REPORTS);
+  const includeValuation = canSeeFinancials && planSupportsValuation;
+
   // A one-day period cannot show a trend, so the chart uses the last 7 days.
   const trendPeriod = range === "today" ? resolvePeriod({ range: "7days" }, biz.offsetMinutes) : period;
 
@@ -74,7 +85,7 @@ export async function getDashboard(
     range === "today"
       ? computePeriodFinancials(branchIds, trendPeriod, biz.offsetMinutes, { withCost: false })
       : Promise.resolve(null),
-    getInventoryReport(ctx, branch.id, { includeValuation: canSeeFinancials }),
+    getInventoryReport(ctx, branch.id, { includeValuation }),
     canSeeFinancials
       ? prisma.financialAccount.findMany({
           where: { businessId: ctx.businessId, status: "ACTIVE" },
@@ -128,7 +139,7 @@ export async function getDashboard(
         .sort((a, b) => a.quantity - b.quantity)
         .slice(0, 6)
         .map((i) => ({ productId: i.productId, name: i.productName, quantity: i.quantity, minStockLevel: i.minStockLevel })),
-      value: canSeeFinancials ? inventory.totalValue : null,
+      value: includeValuation ? inventory.totalValue : null,
     },
     trend,
     trendDays: trend.length,

@@ -1,3 +1,5 @@
+"use client";
+
 import type { HTMLAttributes, ReactNode, ThHTMLAttributes, TdHTMLAttributes } from "react";
 import Link from "next/link";
 import { cn } from "./cn";

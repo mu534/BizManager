@@ -23,7 +23,8 @@
       "@server/*": ["./src/server/*"],
       "@shared/*": ["./src/shared/*"],
       "@client/*": ["./src/client/*"],
-      "@components/*": ["./src/components/*"]
+      "@components/*": ["./src/components/*"],
+      "@content/*": ["./src/content/*"]
     }
   },
   "include": [
