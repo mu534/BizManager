@@ -5,6 +5,7 @@ import { listExpenseCategories } from "@server/services/expense.service";
 import { listAccounts } from "@server/services/financial.service";
 import { prisma } from "@server/db/prisma";
 import { ExpenseFormClient } from "@components/forms/ExpenseFormClient";
+import { getCurrentBranch } from "@server/branch/current-branch";
 
 export const metadata: Metadata = { title: "Record Expense" };
 
@@ -21,9 +22,7 @@ export default async function NewExpensePage({
   const ctx = await resolveContext(businessId).catch(() => null);
   if (!ctx) redirect("/sign-in");
 
-  const branch = await prisma.branch.findFirst({
-    where: { businessId, isDefault: true, status: "ACTIVE" },
-  });
+  const branch = await getCurrentBranch(ctx);
   if (!branch)
     return <p className="text-sm text-gray-500">No active branch found.</p>;
 

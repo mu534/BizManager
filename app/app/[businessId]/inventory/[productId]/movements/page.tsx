@@ -5,6 +5,7 @@ import { resolveContext } from "@server/auth/resolve-context";
 import { getMovementHistory } from "@server/services/inventory.service";
 import { prisma } from "@server/db/prisma";
 import { Money } from "@shared/money";
+import { getCurrentBranch } from "@server/branch/current-branch";
 
 export const metadata: Metadata = { title: "Movement History" };
 
@@ -38,9 +39,7 @@ export default async function MovementHistoryPage({
   });
   if (!product || product.businessId !== businessId) redirect(`/app/${businessId}/inventory`);
 
-  const branch = await prisma.branch.findFirst({
-    where: { businessId, isDefault: true, status: "ACTIVE" },
-  });
+  const branch = await getCurrentBranch(ctx);
   if (!branch) redirect(`/app/${businessId}/inventory`);
 
   const business = await prisma.business.findUnique({ where: { id: businessId }, select: { currency: true } });

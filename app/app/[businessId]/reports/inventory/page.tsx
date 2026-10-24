@@ -9,6 +9,7 @@ import { AccessDenied } from "@components/layout/states";
 import { canViewFinancialReports } from "@server/auth/permissions";
 import { hasFeature, FEATURE_KEYS } from "@server/services/subscription.service";
 import { ReportNav } from "@components/reports/report-nav";
+import { getCurrentBranch } from "@server/branch/current-branch";
 
 export const metadata: Metadata = { title: "Inventory Report" };
 
@@ -28,7 +29,7 @@ export default async function InventoryReportPage({
   // Valuation (cost and value) is a Pro feature; stock levels and low stock are for every plan.
   const valuation = await hasFeature(businessId, FEATURE_KEYS.ADVANCED_REPORTS);
 
-  const branch = await prisma.branch.findFirst({ where: { businessId, isDefault: true, status: "ACTIVE" } });
+  const branch = await getCurrentBranch(ctx);
   const business = await prisma.business.findUnique({ where: { id: businessId }, select: { currency: true } });
   const currency = business?.currency ?? "ETB";
   const fmt = (n: number) => Money.format(n, currency);

@@ -7,6 +7,9 @@ import { Money } from "@shared/money";
 import { reportFilterSchema } from "@shared/validation/report.schema";
 import { ReportNav } from "@components/reports/report-nav";
 import { RangeFilter } from "@components/reports/range-filter";
+import { canViewFinancialReports } from "@server/auth/permissions";
+import { AccessDenied } from "@components/layout/states";
+import { resolveReportBranch } from "@server/branch/report-branch";
 
 export const metadata: Metadata = { title: "Sales Report" };
 
@@ -19,27 +22,29 @@ export default async function SalesReportPage({
   searchParams,
 }: {
   params: Promise<{ businessId: string }>;
-  searchParams: Promise<{ range?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ branch?: string; range?: string; from?: string; to?: string }>;
 }) {
   const { businessId } = await params;
   const sp = await searchParams;
   const ctx = await resolveContext(businessId).catch(() => null);
   if (!ctx) redirect("/sign-in");
+  if (!canViewFinancialReports(ctx)) return <AccessDenied businessId={businessId} what="financial reports" />;
 
   const business = await prisma.business.findUnique({ where: { id: businessId }, select: { currency: true } });
   const currency = business?.currency ?? "ETB";
   const fmt = (n: number) => Money.format(n, currency);
 
-  const filters = reportFilterSchema.parse({ range: sp.range ?? "today", from: sp.from, to: sp.to });
+  const rb = await resolveReportBranch(ctx, sp.branch);
+  const filters = reportFilterSchema.parse({ range: sp.range ?? "today", from: sp.from, to: sp.to, branchId: rb.selectedId });
   const report = await getSalesReport(ctx, filters);
 
   return (
     <div className="space-y-6">
-      <ReportNav businessId={businessId} active="sales" />
+      <ReportNav businessId={businessId} active="sales" showBranches={rb.branches.length > 1} />
 
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">Sales Report</h1>
-        <RangeFilter range={filters.range} from={filters.range === "custom" ? sp.from : undefined} to={filters.range === "custom" ? sp.to : undefined} />
+        <RangeFilter branches={rb.branches} branchId={rb.selectedId} range={filters.range} from={filters.range === "custom" ? sp.from : undefined} to={filters.range === "custom" ? sp.to : undefined} />
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">

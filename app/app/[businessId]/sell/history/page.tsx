@@ -5,6 +5,7 @@ import { resolveContext } from "@server/auth/resolve-context";
 import { listSales } from "@server/services/sale.service";
 import { prisma } from "@server/db/prisma";
 import { Money } from "@shared/money";
+import { getCurrentBranch } from "@server/branch/current-branch";
 
 export const metadata: Metadata = { title: "Sales History" };
 
@@ -31,7 +32,7 @@ export default async function SalesHistoryPage({
   const ctx = await resolveContext(businessId).catch(() => null);
   if (!ctx) redirect("/sign-in");
 
-  const branch = await prisma.branch.findFirst({ where: { businessId, isDefault: true, status: "ACTIVE" } });
+  const branch = await getCurrentBranch(ctx);
   const business = await prisma.business.findUnique({ where: { id: businessId }, select: { currency: true } });
   const currency = business?.currency ?? "ETB";
 

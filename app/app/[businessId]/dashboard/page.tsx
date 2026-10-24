@@ -9,6 +9,7 @@ import { SaleStatusBadge } from "@components/domain/status";
 import { TrendChart } from "@components/charts/trend-chart";
 import { Money } from "@shared/money";
 import type { ReportRange } from "@shared/time";
+import { getCurrentBranchId } from "@server/branch/current-branch";
 
 const RANGES: { value: ReportRange; label: string }[] = [
   { value: "today", label: "Today" },
@@ -35,7 +36,7 @@ export default async function DashboardPage({
   const [{ businessId }, sp] = await Promise.all([params, searchParams]);
   const range: ReportRange = sp.range === "7days" || sp.range === "month" ? sp.range : "today";
   const ctx = await resolveContext(businessId);
-  const d = await getDashboard(ctx, range);
+  const d = await getDashboard(ctx, range, await getCurrentBranchId(ctx));
   const cur = d.business.currency;
   const money = (n: number) => formatMoney(n, cur);
   const base = `/app/${businessId}`;

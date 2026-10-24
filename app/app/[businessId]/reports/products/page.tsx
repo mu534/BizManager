@@ -14,6 +14,7 @@ import { canViewFinancialReports } from "@server/auth/permissions";
 import { isAppError } from "@shared/errors";
 import { reportFilterSchema } from "@shared/validation/report.schema";
 import type { SortKey } from "@shared/product-performance";
+import { resolveReportBranch } from "@server/branch/report-branch";
 
 export const metadata: Metadata = { title: "Product profitability" };
 // Reads session + business-scoped DB data on every request — cannot prerender.
@@ -35,7 +36,7 @@ export default async function ProductReportPage({
   searchParams,
 }: {
   params: Promise<{ businessId: string }>;
-  searchParams: Promise<{ range?: string; from?: string; to?: string; sort?: string }>;
+  searchParams: Promise<{ branch?: string; range?: string; from?: string; to?: string; sort?: string }>;
 }) {
   const { businessId } = await params;
   const sp = await searchParams;
@@ -47,7 +48,8 @@ export default async function ProductReportPage({
   const currency = business?.currency ?? "ETB";
   const fmt = (n: number) => formatMoney(n, currency);
 
-  const filters = reportFilterSchema.parse({ range: sp.range ?? "month", from: sp.from, to: sp.to });
+  const rb = await resolveReportBranch(ctx, sp.branch);
+  const filters = reportFilterSchema.parse({ range: sp.range ?? "month", from: sp.from, to: sp.to, branchId: rb.selectedId });
   const sort: SortKey = SORTS.some((s) => s.key === sp.sort) ? (sp.sort as SortKey) : "profit";
 
   let report: Awaited<ReturnType<typeof getProductPerformanceReport>> | null = null;
@@ -60,11 +62,11 @@ export default async function ProductReportPage({
   }
 
   const keep = { sort };
-  const exportQuery = new URLSearchParams({ range: filters.range, ...(filters.from ? { from: filters.from } : {}), ...(filters.to ? { to: filters.to } : {}), sort });
+  const exportQuery = new URLSearchParams({ ...(rb.selectedId ? { branch: rb.selectedId } : {}), range: filters.range, ...(filters.from ? { from: filters.from } : {}), ...(filters.to ? { to: filters.to } : {}), sort });
 
   return (
     <div className="space-y-6">
-      <ReportNav businessId={businessId} active="products" />
+      <ReportNav businessId={businessId} active="products" showBranches={rb.branches.length > 1} />
       <PageHeader
         title="Product profitability"
         description="Which products sell most and which earn the most. Cost comes from what each sale actually cost at the time."
@@ -76,7 +78,7 @@ export default async function ProductReportPage({
           ) : null
         }
       />
-      <RangeFilter range={filters.range} from={sp.from} to={sp.to} keep={keep} />
+      <RangeFilter branches={rb.branches} branchId={rb.selectedId} range={filters.range} from={sp.from} to={sp.to} keep={keep} />
 
       {blocked && (
         <Alert tone="warning" title="Not available on your plan">
@@ -103,7 +105,7 @@ export default async function ProductReportPage({
                   {SORTS.map((s) => (
                     <Link
                       key={s.key}
-                      href={`?${new URLSearchParams({ range: filters.range, ...(sp.from ? { from: sp.from } : {}), ...(sp.to ? { to: sp.to } : {}), sort: s.key }).toString()}`}
+                      href={`?${new URLSearchParams({ ...(rb.selectedId ? { branch: rb.selectedId } : {}), range: filters.range, ...(sp.from ? { from: sp.from } : {}), ...(sp.to ? { to: sp.to } : {}), sort: s.key }).toString()}`}
                       aria-current={sort === s.key ? "true" : undefined}
                       className={`rounded-control px-2.5 py-1 text-[13px] font-medium ${sort === s.key ? "bg-brand-50 text-brand-800" : "text-ink-600 hover:bg-ink-100"}`}
                     >

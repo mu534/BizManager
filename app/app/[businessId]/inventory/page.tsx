@@ -5,6 +5,7 @@ import { resolveContext } from "@server/auth/resolve-context";
 import { getStockLevels, getLowStockProducts } from "@server/services/inventory.service";
 import { prisma } from "@server/db/prisma";
 import { Money } from "@shared/money";
+import { getCurrentBranch } from "@server/branch/current-branch";
 
 export const metadata: Metadata = { title: "Inventory" };
 
@@ -21,9 +22,7 @@ export default async function InventoryPage({
   const ctx = await resolveContext(businessId).catch(() => null);
   if (!ctx) redirect("/sign-in");
 
-  const branch = await prisma.branch.findFirst({
-    where: { businessId, isDefault: true, status: "ACTIVE" },
-  });
+  const branch = await getCurrentBranch(ctx);
   if (!branch) {
     return <p className="text-sm text-gray-500">No active branch found.</p>;
   }

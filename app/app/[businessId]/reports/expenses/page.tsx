@@ -10,6 +10,9 @@ import Link from "next/link";
 import { Alert } from "@components/ui/primitives";
 import { isAppError } from "@shared/errors";
 import { RangeFilter } from "@components/reports/range-filter";
+import { canViewFinancialReports } from "@server/auth/permissions";
+import { AccessDenied } from "@components/layout/states";
+import { resolveReportBranch } from "@server/branch/report-branch";
 
 export const metadata: Metadata = { title: "Expenses Report" };
 
@@ -22,18 +25,20 @@ export default async function ExpensesReportPage({
   searchParams,
 }: {
   params: Promise<{ businessId: string }>;
-  searchParams: Promise<{ range?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ branch?: string; range?: string; from?: string; to?: string }>;
 }) {
   const { businessId } = await params;
   const sp = await searchParams;
   const ctx = await resolveContext(businessId).catch(() => null);
   if (!ctx) redirect("/sign-in");
+  if (!canViewFinancialReports(ctx)) return <AccessDenied businessId={businessId} what="financial reports" />;
 
   const business = await prisma.business.findUnique({ where: { id: businessId }, select: { currency: true } });
   const currency = business?.currency ?? "ETB";
   const fmt = (n: number) => Money.format(n, currency);
 
-  const filters = reportFilterSchema.parse({ range: sp.range ?? "month", from: sp.from, to: sp.to });
+  const rb = await resolveReportBranch(ctx, sp.branch);
+  const filters = reportFilterSchema.parse({ range: sp.range ?? "month", from: sp.from, to: sp.to, branchId: rb.selectedId });
   let report: Awaited<ReturnType<typeof getExpensesReport>>;
   try {
     report = await getExpensesReport(ctx, filters);
@@ -41,7 +46,7 @@ export default async function ExpensesReportPage({
     if (isAppError(err) && err.code === "SUBSCRIPTION_LIMIT") {
       return (
         <div className="space-y-6">
-          <ReportNav businessId={businessId} active="expenses" />
+          <ReportNav businessId={businessId} active="expenses" showBranches={rb.branches.length > 1} />
           <Alert tone="warning" title="Expense analysis is part of the Pro plan">
             {err.message}{" "}
             <Link href={`/app/${businessId}/settings/subscription`} className="font-semibold underline">View plans</Link>
@@ -54,10 +59,10 @@ export default async function ExpensesReportPage({
 
   return (
     <div className="space-y-6">
-      <ReportNav businessId={businessId} active="expenses" />
+      <ReportNav businessId={businessId} active="expenses" showBranches={rb.branches.length > 1} />
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">Expenses Report</h1>
-        <RangeFilter range={filters.range} from={sp.from} to={sp.to} />
+        <RangeFilter branches={rb.branches} branchId={rb.selectedId} range={filters.range} from={sp.from} to={sp.to} />
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">

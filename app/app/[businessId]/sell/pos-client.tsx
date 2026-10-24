@@ -50,7 +50,9 @@ function SyncStatusBadge({ status }: { status: SyncStatus }) {
     submitting: { label: "Synchronizing…", cls: "bg-blue-50 text-blue-700" },
     synced: { label: "Synced ✓", cls: "bg-green-50 text-green-700" },
     conflict: { label: "Needs attention ⚠", cls: "bg-red-50 text-red-700" },
-    failed: { label: "Waiting to sync", cls: "bg-amber-50 text-amber-700" },
+    failed: { label: "Couldn’t sync — review", cls: "bg-red-50 text-red-700" },
+    held: { label: "Paused — subscription", cls: "bg-amber-50 text-amber-700" },
+    discarded: { label: "Not sent", cls: "bg-gray-100 text-gray-600" },
   };
   const { label, cls } = config[status];
   return (
@@ -354,10 +356,18 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
             Saved locally — will sync when connected.
           </p>
         )}
-        {lastSaleSyncStatus === "conflict" && (
+        {(lastSaleSyncStatus === "conflict" || lastSaleSyncStatus === "failed") && (
           <p className="text-xs text-red-600">
-            This sale could not be synced (e.g. insufficient stock on server).
-            It is preserved locally and needs your attention.
+            This sale could not be applied on the server (for example, stock is no longer available). It is kept on this
+            device and has not been lost.{" "}
+            <a href={`/app/${businessId}/sync`} className="font-semibold underline">Review and fix</a>
+          </p>
+        )}
+        {lastSaleSyncStatus === "held" && (
+          <p className="text-xs text-amber-700">
+            Your subscription is not active, so this sale is paused. It is saved safely and will be sent automatically
+            once your subscription is renewed.{" "}
+            <a href={`/app/${businessId}/settings/subscription`} className="font-semibold underline">Renew</a>
           </p>
         )}
         <div className="flex gap-3 justify-center">
