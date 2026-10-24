@@ -23,6 +23,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import type { Sale, SaleItem, Payment, SaleReturn } from "@prisma/client";
 import { prisma } from "@server/db/prisma";
+import { requireBranchAccess } from "@server/services/branch-access.service";
 import { appError } from "@shared/errors";
 import { requireOwnerOrManager, canApplyPriceOverride } from "@server/auth/permissions";
 import { assertWithinLimit, LIMIT_KEYS } from "@server/services/subscription.service";
@@ -92,12 +93,13 @@ function isUniqueViolation(err: unknown, field: string): boolean {
   );
 }
 
-async function requireBranchInBusiness(branchId: string, businessId: string) {
-  const branch = await prisma.branch.findUnique({ where: { id: branchId } });
-  if (!branch || branch.businessId !== businessId) {
-    throw appError.tenantViolation("Branch does not belong to this business.");
-  }
-  return branch;
+/** Tenant + per-member branch access (and, for writes, an ACTIVE branch). */
+async function requireBranchInBusiness(
+  ctx: TenantContext,
+  branchId: string,
+  opts: { write?: boolean } = {},
+) {
+  return requireBranchAccess(ctx, branchId, opts);
 }
 
 // ─── Receipt numbers ───────────────────────────────────────
@@ -152,7 +154,7 @@ export async function createSale(
   const branchId = input.branchId;
   // Verify tenancy BEFORE taking a lock so a hostile caller cannot hold locks
   // on another tenant's branch.
-  await requireBranchInBusiness(branchId, ctx.businessId);
+  await requireBranchInBusiness(ctx, branchId, { write: true });
   const { currency, offsetMinutes } = await getBusinessTime(ctx.businessId);
 
   try {
@@ -294,7 +296,7 @@ export async function createSale(
         include: SALE_INCLUDE,
       });
       if (winner) {
-        await requireBranchInBusiness(winner.branchId, ctx.businessId);
+        await requireBranchInBusiness(ctx, winner.branchId);
         return winner;
       }
     }
@@ -308,7 +310,7 @@ export async function createSale(
 export async function getSale(ctx: TenantContext, saleId: string): Promise<SaleWithDetails> {
   const sale = await prisma.sale.findUnique({ where: { id: saleId }, include: SALE_INCLUDE });
   if (!sale) throw appError.notFound("Sale not found.");
-  await requireBranchInBusiness(sale.branchId, ctx.businessId);
+  await requireBranchInBusiness(ctx, sale.branchId);
   return sale;
 }
 
@@ -319,7 +321,7 @@ export async function listSales(
 ): Promise<SaleListResult> {
   const branchId = filters.branchId ?? ctx.branchId;
   if (!branchId) throw appError.validationError("Branch is required.");
-  await requireBranchInBusiness(branchId, ctx.businessId);
+  await requireBranchInBusiness(ctx, branchId);
   const { offsetMinutes } = await getBusinessTime(ctx.businessId);
 
   const fromDate = filters.from
@@ -392,7 +394,7 @@ export async function createReturn(
     select: { branchId: true },
   });
   if (!head) throw appError.notFound("Sale not found.");
-  await requireBranchInBusiness(head.branchId, ctx.businessId);
+  await requireBranchInBusiness(ctx, head.branchId);
 
   const seen = new Set<string>();
   for (const it of input.items) {

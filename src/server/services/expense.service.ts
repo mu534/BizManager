@@ -8,6 +8,7 @@
 import "server-only";
 import type { Expense } from "@prisma/client";
 import { prisma } from "@server/db/prisma";
+import { listAccessibleBranches, requireBranchAccess } from "@server/services/branch-access.service";
 import { appError } from "@shared/errors";
 import { Prisma } from "@prisma/client";
 import { requireOwnerOrManager } from "@server/auth/permissions";
@@ -38,10 +39,7 @@ export async function recordExpense(
   requireOwnerOrManager(ctx);
   await assertSubscriptionActive(ctx);
 
-  const branch = await prisma.branch.findUnique({ where: { id: input.branchId } });
-  if (!branch || branch.businessId !== ctx.businessId) {
-    throw appError.tenantViolation("Branch does not belong to this business.");
-  }
+  await requireBranchAccess(ctx, input.branchId, { write: true });
   const { currency } = await getBusinessTime(ctx.businessId);
   const amount = parseMoneyStrict(input.amount, currency, "Amount");
   if (amount <= 0) throw appError.validationError("Amount must be greater than zero.");
@@ -117,22 +115,10 @@ export async function listExpenses(
   const branchId = filters.branchId ?? ctx.branchId;
 
   // If branchId provided, verify ownership.
-  if (branchId) {
-    const branch = await prisma.branch.findUnique({ where: { id: branchId } });
-    if (!branch || branch.businessId !== ctx.businessId) {
-      throw appError.tenantViolation("Branch does not belong to this business.");
-    }
-  }
+  if (branchId) await requireBranchAccess(ctx, branchId);
 
-  // Build where clause that always scopes to the business via branch.
-  const branchIds = branchId
-    ? [branchId]
-    : (
-        await prisma.branch.findMany({
-          where: { businessId: ctx.businessId },
-          select: { id: true },
-        })
-      ).map((b) => b.id);
+  // Always scoped to branches this member may see (never the whole business).
+  const branchIds = branchId ? [branchId] : (await listAccessibleBranches(ctx)).map((b) => b.id);
 
   const where = {
     branchId: { in: branchIds },

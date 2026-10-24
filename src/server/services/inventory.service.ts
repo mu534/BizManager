@@ -18,6 +18,7 @@ import type {
   InventoryMovementType,
 } from "@prisma/client";
 import { prisma } from "@server/db/prisma";
+import { requireBranchAccess } from "@server/services/branch-access.service";
 import { appError } from "@shared/errors";
 import { parseMoneyStrict } from "@shared/sale-math";
 import { computeWeightedAverageCost } from "@shared/costing";
@@ -117,11 +118,7 @@ export async function recordMovement(
   if (product.businessId !== ctx.businessId) {
     throw appError.tenantViolation("Product does not belong to this business.");
   }
-  const branch = await prisma.branch.findUnique({ where: { id: params.branchId } });
-  if (!branch) throw appError.notFound("Branch not found.");
-  if (branch.businessId !== ctx.businessId) {
-    throw appError.tenantViolation("Branch does not belong to this business.");
-  }
+  await requireBranchAccess(ctx, params.branchId, { write: true });
 
   // INFLOW: positive. OUTFLOW: negative. MANUAL_ADJUST: caller's sign.
   let storedQuantity: number;
@@ -319,13 +316,8 @@ export async function getStockLevels(
   ctx: TenantContext,
   branchId: string,
 ): Promise<StockLevelEntry[]> {
-  // Verify branch belongs to this business.
-  const branch = await prisma.branch.findUnique({
-    where: { id: branchId },
-  });
-  if (!branch || branch.businessId !== ctx.businessId) {
-    throw appError.tenantViolation("Branch does not belong to this business.");
-  }
+  // Tenant + per-member branch access.
+  await requireBranchAccess(ctx, branchId);
 
   const snapshots = await prisma.stockSnapshot.findMany({
     where: { branchId },
@@ -346,13 +338,8 @@ export async function getLowStockProducts(
   ctx: TenantContext,
   branchId: string,
 ): Promise<StockLevelEntry[]> {
-  // Verify branch belongs to this business.
-  const branch = await prisma.branch.findUnique({
-    where: { id: branchId },
-  });
-  if (!branch || branch.businessId !== ctx.businessId) {
-    throw appError.tenantViolation("Branch does not belong to this business.");
-  }
+  // Tenant + per-member branch access.
+  await requireBranchAccess(ctx, branchId);
 
   const snapshots = await prisma.stockSnapshot.findMany({
     where: { branchId },

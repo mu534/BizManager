@@ -8,12 +8,13 @@
  */
 import "server-only";
 import { prisma } from "@server/db/prisma";
+import { listAccessibleBranches } from "@server/services/branch-access.service";
+import { hasFeature, FEATURE_KEYS } from "@server/services/subscription.service";
+import { pickCurrentBranch } from "@shared/branch-rules";
 import { appError } from "@shared/errors";
 import { canViewFinancialReports } from "@server/auth/permissions";
 import { getBusinessTime } from "@server/services/business-time";
 import { computePeriodFinancials, getInventoryReport } from "@server/services/report.service";
-import { getSubscriptionAccess, FEATURE_KEYS } from "@server/services/subscription.service";
-import { planHasFeature } from "@shared/plans";
 import type { DailyPoint, ProfitResult } from "@shared/profit";
 import { resolvePeriod, type ReportRange } from "@shared/time";
 import type { TenantContext } from "@shared/types/auth.types";
@@ -52,11 +53,11 @@ export interface DashboardData {
 export async function getDashboard(
   ctx: TenantContext,
   range: ReportRange,
+  /** The member's chosen branch (a preference — re-validated against their access here). */
+  preferredBranchId?: string | null,
 ): Promise<DashboardData> {
-  const branch = await prisma.branch.findFirst({
-    where: { businessId: ctx.businessId, isDefault: true, status: "ACTIVE" },
-  });
-  if (!branch) throw appError.notFound("No active branch found for this business.");
+  const branch = pickCurrentBranch(await listAccessibleBranches(ctx), preferredBranchId);
+  if (!branch) throw appError.notFound("No active branch is available to you.");
 
   const [business, biz] = await Promise.all([
     prisma.business.findUnique({ where: { id: ctx.businessId }, select: { name: true } }),
@@ -65,17 +66,12 @@ export async function getDashboard(
   if (!business) throw appError.notFound("Business not found.");
 
   const canSeeFinancials = canViewFinancialReports(ctx);
+  // Inventory valuation is a Pro feature: ask for it only when the plan includes
+  // it, otherwise the report would refuse and the whole dashboard would fail.
+  const showValuation =
+    canSeeFinancials && (await hasFeature(ctx.businessId, FEATURE_KEYS.ADVANCED_REPORTS));
   const period = resolvePeriod({ range }, biz.offsetMinutes);
   const branchIds = [branch.id];
-
-  // Inventory valuation requires both financial permission (role) AND
-  // the ADVANCED_REPORTS feature (Pro+ plan). Check the plan without throwing
-  // so Basic-plan users still get the dashboard with valuation hidden.
-  const subscriptionAccess = await getSubscriptionAccess(ctx.businessId);
-  const planSupportsValuation =
-    subscriptionAccess.planCode !== null &&
-    planHasFeature(subscriptionAccess.planCode, FEATURE_KEYS.ADVANCED_REPORTS);
-  const includeValuation = canSeeFinancials && planSupportsValuation;
 
   // A one-day period cannot show a trend, so the chart uses the last 7 days.
   const trendPeriod = range === "today" ? resolvePeriod({ range: "7days" }, biz.offsetMinutes) : period;
@@ -85,7 +81,7 @@ export async function getDashboard(
     range === "today"
       ? computePeriodFinancials(branchIds, trendPeriod, biz.offsetMinutes, { withCost: false })
       : Promise.resolve(null),
-    getInventoryReport(ctx, branch.id, { includeValuation }),
+    getInventoryReport(ctx, branch.id, { includeValuation: showValuation }),
     canSeeFinancials
       ? prisma.financialAccount.findMany({
           where: { businessId: ctx.businessId, status: "ACTIVE" },
@@ -139,7 +135,7 @@ export async function getDashboard(
         .sort((a, b) => a.quantity - b.quantity)
         .slice(0, 6)
         .map((i) => ({ productId: i.productId, name: i.productName, quantity: i.quantity, minStockLevel: i.minStockLevel })),
-      value: includeValuation ? inventory.totalValue : null,
+      value: showValuation ? inventory.totalValue : null,
     },
     trend,
     trendDays: trend.length,
