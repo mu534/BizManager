@@ -127,3 +127,26 @@ function enumerateDaysCount(fromKey: string, toKey: string): number {
     ) + 1
   );
 }
+
+/** Build a resolved period from inclusive business-day keys. */
+export function periodFromKeys(fromKey: string, toKey: string, offsetMinutes: number): ResolvedPeriod {
+  return {
+    fromKey,
+    toKey,
+    from: startOfBusinessDay(fromKey, offsetMinutes),
+    to: endOfBusinessDay(toKey, offsetMinutes),
+    fromDate: new Date(`${fromKey}T00:00:00.000Z`),
+    toDate: new Date(`${toKey}T00:00:00.000Z`),
+  };
+}
+
+/**
+ * The period of equal length immediately before `period`
+ * (e.g. 1–18 Oct → 13–30 Sep). Used for "compared with the previous period".
+ */
+export function previousPeriod(period: Pick<ResolvedPeriod, "fromKey" | "toKey">, offsetMinutes: number): ResolvedPeriod {
+  const days = enumerateDaysCount(period.fromKey, period.toKey);
+  const prevTo = addDays(period.fromKey, -1);
+  const prevFrom = addDays(period.fromKey, -days);
+  return periodFromKeys(prevFrom, prevTo, offsetMinutes);
+}

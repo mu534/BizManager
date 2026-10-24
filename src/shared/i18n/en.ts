@@ -27,7 +27,7 @@ const en = {
       "BizManager helps clothing, shoe, grocery, electronics and general shops record sales in seconds, track Cash, Telebirr and bank money, and see what really makes a profit.",
     primaryCta: "Create your account",
     secondaryCta: "See pricing",
-    note: "Sales and expenses can be recorded without internet and sync when you are back online.",
+    note: "Sales, expenses and stock changes can be recorded without internet and sync when you are back online.",
   },
   marquee: [
     "Inventory management",
@@ -95,12 +95,13 @@ const en = {
     can: [
       "Record sales from products already loaded on your device",
       "Record expenses",
+      "Record stock changes — goods received, count corrections, damaged stock (owner and manager)",
       "See what is waiting to sync",
     ],
     syncTitle: "Syncs when you are back online",
     sync: [
-      "Saved sales and expenses are sent automatically and safely — a retry never records a sale twice",
-      "If something cannot be applied (for example, stock is no longer available), it is kept and shown to you instead of being deleted",
+      "Saved sales, expenses and stock changes are sent automatically and safely — a retry never records anything twice",
+      "If something cannot be applied (for example, stock is no longer available), it is kept and shown to you with a way to fix and retry it — never silently deleted",
     ],
     needsTitle: "Needs internet",
     needs: [
@@ -177,7 +178,7 @@ const en = {
     title: "Frequently asked questions",
     items: [
       { q: "How much does it cost?", a: "Plans are billed monthly or yearly, with a discount for yearly billing. Current prices are shown in the pricing section above." },
-      { q: "Can I use it without internet?", a: "You can record sales and expenses offline using products already loaded on your device. They sync when you reconnect. Signing in, reports and payments need internet." },
+      { q: "Can I use it without internet?", a: "You can record sales, expenses and stock changes offline using products already loaded on your device. They sync when you reconnect. Signing in, reports and payments need internet." },
       { q: "How do I pay for a subscription?", a: "Send the plan amount by Telebirr or bank transfer, enter the transaction reference and upload your receipt. Our team verifies it manually and activates your plan." },
       { q: "How long does verification take?", a: "Usually within one business day. You can see the status in the app, and if a payment is rejected you will see the reason and can submit it again." },
       { q: "What happens when my subscription ends?", a: "You get a 3-day grace period to renew while everything keeps working. After that the app becomes read-only: you can view and export your data but cannot record new transactions. Nothing is deleted." },

@@ -29,7 +29,7 @@ export const omDictionary: Dictionary = {
       "BizManager dukkaanonni uffataa, kophee, nyaataa, meeshaa elektirooniksii fi meeshaalee adda addaa gurgurtaa daqiiqaa muraasatti galmeessuu, maallaqa Kaashii, Telebirr fi baankii hordofuu, akkasumas maal bu'aa dhugaa akka argamsiisu arguu akka danda'an isaan gargaara.",
     primaryCta: "Herrega kee banadhu",
     secondaryCta: "Gatii ilaali",
-    note: "Gurgurtaa fi baasiin interneetii malee galmeeffamuu danda'u; interneetiin yeroo deebi'u walsimsiifamu.",
+    note: "Gurgurtaa, baasii fi jijjiirama kuusaa interneetii malee galmeeffamuu danda'u; interneetiin yeroo deebi'u walsimsiifamu.",
   },
   marquee: [
     "Bulchiinsa kuusaa",
@@ -97,12 +97,13 @@ export const omDictionary: Dictionary = {
     can: [
       "Meeshaalee duraan bilbila ykn kompiitara kee irratti fe'aman fayyadamuun gurgurtaa galmeessuu",
       "Baasii galmeessuu",
+      "Jijjiirama kuusaa galmeessuu — meeshaa fudhatame, sirreeffama lakkaa'insaa, meeshaa balleessame (abbaa qabeenyaa fi bulchaa)",
       "Wanti walsimsiisuuf eegaa jiru arguu",
     ],
     syncTitle: "Interneetiin yeroo deebi'u ni walsimsiifama",
     sync: [
-      "Gurgurtaa fi baasiin olkaa'ame ofumaan fi amansiisaadhaan ni ergama — deebi'ee yaaluun gurgurtaa altokko hin galmeessu",
-      "Wanti tokko sirnaan raawwatamuu baate (fkn, kuusaan hin jiru) hin haqamu; ni kaa'ama, sitti agarsiifama",
+      "Gurgurtaa, baasii fi jijjiirama kuusaa olkaa'ame ofumaan fi amansiisaadhaan ni ergama — deebi'ee yaaluun wanta tokko altokko hin galmeessu",
+      "Wanti tokko sirnaan raawwatamuu baate (fkn, kuusaan hin jiru) callisaan hin haqamu; ni kaa'ama, sitti agarsiifama, akkasumas sirreessitee irra deebi'ee ergu dandeessa",
     ],
     needsTitle: "Interneetii ni barbaada",
     needs: [
@@ -179,7 +180,7 @@ export const omDictionary: Dictionary = {
     title: "Gaaffilee yeroo baay'ee gaafataman",
     items: [
       { q: "Gatiin isaa meeqa?", a: "Karooroonni ji'aan ykn waggaan ni kaffalamu; waggaan yoo kaffalame hir'inni ni jira. Gatiin ammaa kutaa gatii ol jiru keessatti ni agarsiifama." },
-      { q: "Interneetii malee fayyadamuu nan danda'aa?", a: "Meeshaalee duraan bilbila ykn kompiitara kee irratti fe'aman fayyadamuun gurgurtaa fi baasii interneetii malee galmeessuu ni dandeessa. Yeroo deebi'u ni walsimsiifama. Seenuu, gabaasaa fi kaffaltii interneetii ni barbaada." },
+      { q: "Interneetii malee fayyadamuu nan danda'aa?", a: "Meeshaalee duraan bilbila ykn kompiitara kee irratti fe'aman fayyadamuun gurgurtaa, baasii fi jijjiirama kuusaa interneetii malee galmeessuu ni dandeessa. Yeroo deebi'u ni walsimsiifama. Seenuu, gabaasaa fi kaffaltii interneetii ni barbaada." },
       { q: "Hirmaannaa akkamitti kaffala?", a: "Hanga karooraa Telebirr ykn baankiin ergi, lakkoofsa daldalaa galchi, ragaa kaffaltii olkaa'i. Garee keenya harkaan ni mirkaneessa, karoora kee ni banu." },
       { q: "Mirkaneessuun yeroo hagamii fudhata?", a: "Yeroo baay'ee guyyaa hojii tokko keessatti. Haala isaa appii keessatti ilaaluu ni dandeessa; kaffaltiin yoo didame sababa isaa argitee deebitee ergitu ni dandeessa." },
       { q: "Hirmaannaan koo yeroo xumuramu maal ta'a?", a: "Guyyaa 3 yeroo dabalataa haaromsuuf ni argatta; hundi hojjechaa jira. Booda appiin dubbisuu qofa ta'a: daataa kee ilaaluu fi ba'ee fudhachuu ni dandeessa, garuu daldala haaraa galmeessuu hin dandeessu. Wanti hin haqamu." },

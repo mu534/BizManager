@@ -36,7 +36,7 @@ export const PLAN_FEATURE_LINES: Record<PlanCode, readonly PlanFeatureLine[]> = 
     a("oneShop"),
   ],
   PRO: [
-    soon("advancedReports"),
+    a("advancedReports"),
     a("productProfit"),
     a("stockReports"),
     a("expenseCategories"),
@@ -45,7 +45,7 @@ export const PLAN_FEATURE_LINES: Record<PlanCode, readonly PlanFeatureLine[]> = 
     a("employees"),
     a("reportGrants"),
   ],
-  BUSINESS: [soon("branches"), soon("branchData"), soon("consolidated"), soon("centralStaff")],
+  BUSINESS: [a("branches"), a("branchData"), a("consolidated"), a("centralStaff")],
 };
 
 /** The plan whose features this plan builds on (for "Everything in X, plus:"). */
