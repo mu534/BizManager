@@ -3,120 +3,137 @@
 /**
  * Sync queue processor.
  *
- * Responsibilities:
- *  - enqueueOperation: persist a SyncQueueItem to IndexedDB.
- *  - processQueue: read pending items and POST to /api/[businessId]/sync/batch,
- *    then update local records based on per-op results.
- *  - startSyncProcessor: run processQueue on a 30 s interval and on
- *    every window 'online' event. Returns a cleanup function.
+ *  - enqueueOperation: persist a SyncQueueItem to IndexedDB (durable).
+ *  - processQueue: deliver due items to POST /api/[businessId]/sync/batch and
+ *    apply each outcome through the pure state machine in @shared/sync-policy.
+ *  - retryItem / discardItem: the user-facing recovery actions.
+ *  - startSyncProcessor: run on an interval and when connectivity returns.
  *
- * Safety rules enforced here:
- *  - syncOperationId is NEVER regenerated. The original client UUID is
- *    preserved across all retry attempts.
- *  - An isProcessing mutex prevents overlapping queue runs.
- *  - Exponential backoff: min(30000 * 2^retryCount, 3600000) ms.
- *  - After retryCount >= 5, transition to 'conflict' (needs human review).
+ * Safety rules:
+ *  - syncOperationId is NEVER regenerated; every delivery attempt reuses it, so
+ *    the server's idempotency makes retries harmless.
+ *  - An item only leaves the queue by server acknowledgement or an explicit,
+ *    confirmed discard. Policy never deletes anything.
+ *  - Connectivity failures never consume retries; subscription restrictions HOLD
+ *    items (they resume after renewal) instead of flagging a data conflict.
+ *  - Items are delivered oldest-first so e.g. a stock receipt reaches the server
+ *    before the sale that depends on it.
  */
 
 import { db, type SyncQueueItem, type SyncStatus } from "./dexie";
-
-// ─── Types ───────────────────────────────────────────────────────────────────
+import {
+  isDeliverable,
+  manualRetryState,
+  nextQueueState,
+  type QueueState,
+  type SyncOutcome,
+} from "@shared/sync-policy";
 
 /** Fields the caller must supply — the rest are filled in by enqueueOperation. */
 export type EnqueueInput = Omit<
   SyncQueueItem,
-  "id" | "status" | "retryCount" | "retryAt" | "lastError" | "createdAt"
+  "id" | "status" | "retryCount" | "retryAt" | "lastError" | "lastErrorCode" | "createdAt"
 >;
 
 type SyncOpResult = {
   syncOperationId: string;
-  status: "SYNCED" | "CONFLICT" | "FAILED" | "DUPLICATE";
+  status: "SYNCED" | "CONFLICT" | "FAILED" | "DUPLICATE" | "HELD";
   entityId?: string;
   error?: { code: string; message: string };
 };
 
-type BatchSyncResponse = {
-  results: SyncOpResult[];
-};
-
-// ─── Mutex ───────────────────────────────────────────────────────────────────
+type BatchSyncResponse = { results: SyncOpResult[] };
 
 let isProcessing = false;
 
-// ─── Backoff helper ──────────────────────────────────────────────────────────
-
-function nextRetryAt(retryCount: number): number {
-  const backoffMs = Math.min(30_000 * Math.pow(2, retryCount), 3_600_000);
-  return Date.now() + backoffMs;
-}
-
-// ─── API ─────────────────────────────────────────────────────────────────────
-
-/**
- * Persist a new sync operation to the queue.
- * Does NOT trigger processing — call processQueue separately.
- */
+/** Persist a new operation. Does NOT trigger processing — call processQueue. */
 export async function enqueueOperation(item: EnqueueInput): Promise<void> {
   const queueItem: SyncQueueItem = {
     ...item,
     id: crypto.randomUUID(),
     status: "pending",
     retryCount: 0,
-    retryAt: 0, // Process immediately on next run.
+    retryAt: 0,
     lastError: null,
+    lastErrorCode: null,
     createdAt: Date.now(),
   };
   await db.syncQueue.add(queueItem);
 }
 
+/** Mirror a queue transition onto the local sale/expense record the UI shows. */
+async function mirrorToLocalRecord(item: SyncQueueItem, status: SyncStatus, entityId?: string): Promise<void> {
+  if (item.entityType === "SALE") {
+    await db.localSales
+      .where("id")
+      .equals(item.entityId)
+      .modify({
+        syncStatus: status,
+        updatedAt: Date.now(),
+        ...(entityId ? { serverSaleId: entityId } : {}),
+      });
+  } else if (item.entityType === "EXPENSE") {
+    await db.localExpenses
+      .where("id")
+      .equals(item.entityId)
+      .modify({
+        syncStatus: status,
+        ...(entityId ? { serverExpenseId: entityId } : {}),
+      });
+  }
+}
+
+async function applyState(item: SyncQueueItem, state: QueueState, entityId?: string): Promise<void> {
+  await db.syncQueue.update(item.id, {
+    status: state.status,
+    retryCount: state.retryCount,
+    retryAt: state.retryAt,
+    lastError: state.lastError,
+    lastErrorCode: state.lastErrorCode,
+  });
+  await mirrorToLocalRecord(item, state.status, entityId);
+}
+
+async function applyOutcome(item: SyncQueueItem, outcome: SyncOutcome, entityId?: string): Promise<void> {
+  await applyState(item, nextQueueState(item, outcome, Date.now()), entityId);
+}
+
 /**
- * Process all pending queue items for a business.
- *
- * Reads items with status='pending' and retryAt <= now, batches them
- * (max 50), POST to /api/[businessId]/sync/batch, and handles results.
- *
- * This function is idempotent and safe to call concurrently — the mutex
- * ensures only one run executes at a time.
+ * Deliver all due items for a business. Safe to call concurrently — a mutex lets
+ * only one run execute at a time.
  */
 export async function processQueue(businessId: string): Promise<void> {
   if (isProcessing) return;
+  // Don't burn an attempt when the browser already knows it has no connection.
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return;
   isProcessing = true;
 
   try {
     const now = Date.now();
 
-    // Recovery: if a previous run died mid-request (tab closed, crash) its items
-    // are stuck in "submitting" and would never be picked up again. We hold the
-    // in-process mutex, so none of OURS are in flight; re-queue them. A
-    // duplicate submission is harmless — the server is idempotent per
-    // syncOperationId.
-    const stuck = await db.syncQueue
-      .where("[businessId+status]")
-      .equals([businessId, "submitting"])
-      .toArray();
-    if (stuck.length > 0) {
-      await db.syncQueue.bulkPut(stuck.map((i) => ({ ...i, status: "pending" as SyncStatus })));
-    }
+    // Recovery: a previous run that died mid-request (tab closed, crash) leaves
+    // items stuck in "submitting". We hold the mutex, so none are ours in flight.
+    // Re-delivering is harmless because the server is idempotent.
+    const stuck = await db.syncQueue.where("[businessId+status]").equals([businessId, "submitting"]).toArray();
+    for (const s of stuck) await db.syncQueue.update(s.id, { status: "pending" });
 
-    // Fetch pending items due for processing (retryAt <= now).
-    const allPending = await db.syncQueue
+    const candidates = await db.syncQueue
       .where("[businessId+status]")
-      .equals([businessId, "pending"])
+      .anyOf([
+        [businessId, "pending"],
+        [businessId, "held"],
+      ])
       .toArray();
 
-    const due = allPending.filter((item) => item.retryAt <= now);
+    const due = candidates
+      .filter((i) => isDeliverable(i.status) && i.retryAt <= now)
+      .sort((a, b) => a.createdAt - b.createdAt);
     if (due.length === 0) return;
 
-    // Process in batches of 50.
     const batch = due.slice(0, 50);
-
-    // Mark as 'submitting' to prevent double-submission on slow networks.
-    await db.syncQueue.bulkPut(
-      batch.map((item) => ({ ...item, status: "submitting" as SyncStatus })),
-    );
+    for (const item of batch) await db.syncQueue.update(item.id, { status: "submitting" });
 
     let results: SyncOpResult[];
-
     try {
       const response = await fetch(`/api/${businessId}/sync/batch`, {
         method: "POST",
@@ -134,187 +151,75 @@ export async function processQueue(businessId: string): Promise<void> {
       });
 
       if (!response.ok) {
-        // Entire batch failed (e.g. auth error, 5xx).
-        if (response.status === 401) {
-          // Signed out / session expired: nothing is wrong with the data. Keep it
-          // pending without burning retries so it syncs after the next sign-in.
-          for (const item of batch) {
-            await db.syncQueue.update(item.id, {
-              status: "pending",
-              retryAt: Date.now() + 60_000,
-              lastError: "Sign in again to sync.",
-            });
-          }
-          return;
-        }
-        const errorText = `HTTP ${response.status}`;
-        await revertBatchToFailed(batch, errorText);
+        const outcome: SyncOutcome =
+          response.status === 401 ? { kind: "unauthenticated" } : { kind: "http", status: response.status };
+        for (const item of batch) await applyOutcome(item, outcome);
         return;
       }
-
-      const body = (await response.json()) as BatchSyncResponse;
-      results = body.results ?? [];
-    } catch (networkError) {
-      // Network error — revert all submitting items back to pending for retry.
-      const errorMsg =
-        networkError instanceof Error ? networkError.message : "Network error";
-      await revertBatchToFailed(batch, errorMsg);
+      results = ((await response.json()) as BatchSyncResponse).results ?? [];
+    } catch {
+      // fetch threw: no connectivity (or the response was unreadable). Not the
+      // operations' fault — keep them pending without consuming retries.
+      for (const item of batch) await applyOutcome(item, { kind: "network" });
       return;
     }
 
-    // Process per-operation results.
     for (const item of batch) {
-      const result = results.find(
-        (r) => r.syncOperationId === item.syncOperationId,
-      );
-
+      const result = results.find((r) => r.syncOperationId === item.syncOperationId);
       if (!result) {
-        // No result returned — treat as failed.
-        await handleItemFailed(item, "No result returned from server");
+        await applyOutcome(item, { kind: "missing-result" });
         continue;
       }
-
-      switch (result.status) {
-        case "SYNCED":
-        case "DUPLICATE": {
-          // Mark queue item as synced.
-          await db.syncQueue.update(item.id, { status: "synced" });
-
-          // Update the corresponding local record.
-          if (item.entityType === "SALE") {
-            await db.localSales
-              .where("id")
-              .equals(item.entityId)
-              .modify({
-                syncStatus: "synced",
-                serverSaleId: result.entityId ?? null,
-                updatedAt: Date.now(),
-              });
-          } else if (item.entityType === "EXPENSE") {
-            await db.localExpenses
-              .where("id")
-              .equals(item.entityId)
-              .modify({
-                syncStatus: "synced",
-                serverExpenseId: result.entityId ?? null,
-              });
-          }
-          break;
-        }
-
-        case "CONFLICT": {
-          // Server rejected (e.g. insufficient stock). Keep data, mark conflict.
-          await db.syncQueue.update(item.id, {
-            status: "conflict",
-            lastError: result.error?.message ?? "Conflict on server",
-          });
-          if (item.entityType === "SALE") {
-            await db.localSales
-              .where("id")
-              .equals(item.entityId)
-              .modify({ syncStatus: "conflict", updatedAt: Date.now() });
-          } else if (item.entityType === "EXPENSE") {
-            await db.localExpenses
-              .where("id")
-              .equals(item.entityId)
-              .modify({ syncStatus: "conflict" });
-          }
-          break;
-        }
-
-        case "FAILED": {
-          await handleItemFailed(
-            item,
-            result.error?.message ?? "Server error",
-          );
-          break;
-        }
-      }
+      await applyOutcome(
+        item,
+        { kind: "result", status: result.status, code: result.error?.code, message: result.error?.message },
+        result.entityId,
+      );
     }
   } finally {
     isProcessing = false;
   }
 }
 
-/** Revert submitting items back to pending with backoff after a batch-level failure. */
-async function revertBatchToFailed(
-  batch: SyncQueueItem[],
-  errorMsg: string,
-): Promise<void> {
-  for (const item of batch) {
-    await handleItemFailed(item, errorMsg);
-  }
-}
+// ─── Recovery actions (used by the sync-issues page) ─────────────────────────
 
-/** Increment retryCount and schedule backoff, or escalate to conflict. */
-async function handleItemFailed(
-  item: SyncQueueItem,
-  errorMsg: string,
-): Promise<void> {
-  const newRetryCount = item.retryCount + 1;
-
-  if (newRetryCount >= 5) {
-    // Too many retries — needs human attention.
-    await db.syncQueue.update(item.id, {
-      status: "conflict",
-      retryCount: newRetryCount,
-      lastError: errorMsg,
-    });
-    if (item.entityType === "SALE") {
-      await db.localSales
-        .where("id")
-        .equals(item.entityId)
-        .modify({ syncStatus: "conflict", updatedAt: Date.now() });
-    } else if (item.entityType === "EXPENSE") {
-      await db.localExpenses
-        .where("id")
-        .equals(item.entityId)
-        .modify({ syncStatus: "conflict" });
-    }
-  } else {
-    // Schedule retry with bounded exponential backoff.
-    await db.syncQueue.update(item.id, {
-      status: "pending",
-      retryCount: newRetryCount,
-      retryAt: nextRetryAt(newRetryCount),
-      lastError: errorMsg,
-    });
-    // Restore local record to pending so the UI shows "Waiting to sync".
-    if (item.entityType === "SALE") {
-      await db.localSales
-        .where("id")
-        .equals(item.entityId)
-        .modify({ syncStatus: "pending", updatedAt: Date.now() });
-    } else if (item.entityType === "EXPENSE") {
-      await db.localExpenses
-        .where("id")
-        .equals(item.entityId)
-        .modify({ syncStatus: "pending" });
-    }
-  }
+/** Re-queue an item with the SAME operation id for immediate delivery. */
+export async function retryItem(id: string): Promise<void> {
+  const item = await db.syncQueue.get(id);
+  if (!item || item.status === "synced" || item.status === "discarded") return;
+  await applyState(item, manualRetryState());
 }
 
 /**
- * Start the background sync processor.
- *
- * - Calls processQueue every 30 seconds.
- * - Also calls processQueue immediately when the window 'online' event fires.
- *
- * @returns Cleanup function to stop the processor (call on component unmount).
+ * Stop syncing an item the user has decided not to send. The record stays on
+ * the device (it is not deleted); it just leaves the queue. UI must confirm first.
  */
-export function startSyncProcessor(businessId: string): () => void {
-  const interval = setInterval(() => {
-    void processQueue(businessId);
-  }, 30_000);
+export async function discardItem(id: string): Promise<void> {
+  const item = await db.syncQueue.get(id);
+  if (!item || item.status === "synced") return;
+  await db.syncQueue.update(id, { status: "discarded" });
+  await mirrorToLocalRecord(item, "discarded");
+}
 
-  function onOnline() {
-    void processQueue(businessId);
+/** Resolve after the item leaves pending/submitting, or after `timeoutMs`. */
+export async function waitForOutcome(syncOperationId: string, timeoutMs = 4000): Promise<SyncQueueItem | undefined> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const item = await db.syncQueue.where("syncOperationId").equals(syncOperationId).first();
+    if (!item || (item.status !== "pending" && item.status !== "submitting") || Date.now() >= deadline) return item;
+    await new Promise((r) => setTimeout(r, 250));
   }
+}
 
-  window.addEventListener("online", onOnline);
-
+/** Run the processor on an interval and whenever connectivity returns. Returns a cleanup fn. */
+export function startSyncProcessor(businessId: string): () => void {
+  const interval = setInterval(() => void processQueue(businessId), 30_000);
+  const trigger = () => void processQueue(businessId);
+  window.addEventListener("online", trigger);
+  document.addEventListener("visibilitychange", trigger);
   return () => {
     clearInterval(interval);
-    window.removeEventListener("online", onOnline);
+    window.removeEventListener("online", trigger);
+    document.removeEventListener("visibilitychange", trigger);
   };
 }

@@ -72,6 +72,54 @@ export const syncExpensePayloadSchema = z.object({
 
 export type SyncExpensePayloadInput = z.infer<typeof syncExpensePayloadSchema>;
 
+/**
+ * Payload for an offline-recorded stock change. `kind` selects the service:
+ *   OPENING_STOCK / STOCK_RECEIPT — positive quantity, unitCost required
+ *   STOCK_ADJUSTMENT              — signed, non-zero quantity, reason required
+ *   STOCK_DAMAGE                  — positive quantity (always a reduction)
+ * Conflict policy: inflows commute with every other change and always apply.
+ * Outflows that would take stock below zero are REJECTED (never driven
+ * negative) and kept on the device for the shopkeeper to resolve.
+ */
+const inventoryBase = {
+  productId: z.string().uuid("Invalid product"),
+  /** Used only to call resolveContext(businessId, branchId); never trusted alone. */
+  branchId: z.string().uuid("Invalid branch"),
+  notes: z.string().max(500).optional(),
+};
+const costString = z
+  .string()
+  .min(1, "Cost is required")
+  .refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) >= 0, "Must be a valid non-negative number");
+
+export const syncInventoryPayloadSchema = z.discriminatedUnion("kind", [
+  z.object({
+    ...inventoryBase,
+    kind: z.literal("OPENING_STOCK"),
+    quantity: z.number().int().positive("Quantity must be positive"),
+    unitCost: costString,
+  }),
+  z.object({
+    ...inventoryBase,
+    kind: z.literal("STOCK_RECEIPT"),
+    quantity: z.number().int().positive("Quantity must be positive"),
+    unitCost: costString,
+  }),
+  z.object({
+    ...inventoryBase,
+    kind: z.literal("STOCK_ADJUSTMENT"),
+    quantity: z.number().int().refine((v) => v !== 0, "Quantity must not be zero"),
+    reason: z.string().trim().min(1, "Reason is required").max(200),
+  }),
+  z.object({
+    ...inventoryBase,
+    kind: z.literal("STOCK_DAMAGE"),
+    quantity: z.number().int().positive("Damaged quantity must be positive"),
+  }),
+]);
+
+export type SyncInventoryPayloadInput = z.infer<typeof syncInventoryPayloadSchema>;
+
 // ─── Discriminated union for a single sync operation ─────────────────────────
 
 export const syncSaleOperationSchema = z.object({
@@ -90,9 +138,18 @@ export const syncExpenseOperationSchema = z.object({
   payload: syncExpensePayloadSchema,
 });
 
+export const syncInventoryOperationSchema = z.object({
+  syncOperationId: z.string().uuid("Invalid syncOperationId"),
+  entityType: z.literal("INVENTORY"),
+  operationType: z.literal("CREATE"),
+  schemaVersion: z.literal(1),
+  payload: syncInventoryPayloadSchema,
+});
+
 export const syncOperationSchema = z.discriminatedUnion("entityType", [
   syncSaleOperationSchema,
   syncExpenseOperationSchema,
+  syncInventoryOperationSchema,
 ]);
 
 export type SyncOperationInput = z.infer<typeof syncOperationSchema>;
@@ -116,7 +173,8 @@ export type SyncBatchInput = z.infer<typeof syncBatchSchema>;
 
 // ─── Response types (shared for client & server) ──────────────────────────────
 
-export type SyncResultStatus = "SYNCED" | "CONFLICT" | "FAILED" | "DUPLICATE";
+export type { SyncResultStatus } from "../sync-results";
+import type { SyncResultStatus } from "../sync-results";
 
 export interface SyncOperationResult {
   syncOperationId: string;

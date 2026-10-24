@@ -17,7 +17,11 @@ export type SyncStatus =
   | "submitting"
   | "synced"
   | "conflict"
-  | "failed";
+  | "failed"
+  /** Paused by a subscription restriction; resumes automatically after renewal. */
+  | "held"
+  /** Removed from syncing by an explicit, confirmed user decision (data stays on the device). */
+  | "discarded";
 
 // ─── Product replica ─────────────────────────────────────────────────────────
 
@@ -140,6 +144,36 @@ export interface SyncExpensePayload {
   branchId: string;
 }
 
+/**
+ * An offline stock change. `quantity` is positive for receipts, opening stock
+ * and damage (damage is always a reduction) and signed for adjustments.
+ */
+export type SyncInventoryPayload =
+  | {
+      kind: "OPENING_STOCK" | "STOCK_RECEIPT";
+      productId: string;
+      branchId: string;
+      quantity: number;
+      /** Decimal string (major units). */
+      unitCost: string;
+      notes?: string;
+    }
+  | {
+      kind: "STOCK_ADJUSTMENT";
+      productId: string;
+      branchId: string;
+      quantity: number;
+      reason: string;
+      notes?: string;
+    }
+  | {
+      kind: "STOCK_DAMAGE";
+      productId: string;
+      branchId: string;
+      quantity: number;
+      notes?: string;
+    };
+
 // ─── Sync queue item ─────────────────────────────────────────────────────────
 
 export interface SyncQueueItem {
@@ -154,20 +188,24 @@ export interface SyncQueueItem {
   /** Device/installation identifier (localStorage 'bm_client_id') */
   clientId: string;
   businessId: string;
-  entityType: "SALE" | "EXPENSE";
+  entityType: "SALE" | "EXPENSE" | "INVENTORY";
   /**
    * Local entity ID (LocalSale.id or LocalExpense.id).
    * Used to update the local record after the server responds.
    */
   entityId: string;
   operationType: "CREATE";
-  payload: SyncSalePayload | SyncExpensePayload;
+  payload: SyncSalePayload | SyncExpensePayload | SyncInventoryPayload;
   schemaVersion: 1;
   status: SyncStatus;
   retryCount: number;
   /** Unix timestamp (ms) — do not process before this time */
   retryAt: number;
   lastError: string | null;
+  /** Machine-readable cause (NETWORK, AUTH, SUBSCRIPTION_LIMIT, INSUFFICIENT_STOCK, …). */
+  lastErrorCode?: string | null;
+  /** Short human description shown on the sync-issues page (e.g. "Received 10 × Cotton shirt"). */
+  summary?: string;
   /** Unix timestamp (ms) */
   createdAt: number;
 }
