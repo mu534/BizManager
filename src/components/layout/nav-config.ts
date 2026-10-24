@@ -44,6 +44,7 @@ export const NAV_GROUPS: NavGroup[] = [
     { label: "Reports", path: "/reports", icon: IconChart, match: prefix("/reports"), requires: "financial" },
   ] },
   { label: "Business", items: [
+    { label: "Branches", path: "/settings/branches", icon: IconBox, match: prefix("/settings/branches"), requires: "owner" },
     { label: "Team", path: "/settings/team", icon: IconUsers, match: prefix("/settings/team"), requires: "owner" },
     { label: "Plan & billing", path: "/settings/subscription", icon: IconSettings, match: prefix("/settings/subscription"), requires: "owner" },
   ] },

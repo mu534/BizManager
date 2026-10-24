@@ -1,11 +1,10 @@
-"use client";
-
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { Logo } from "@components/ui/logo";
 import { Badge } from "@components/ui/primitives";
 import { OfflineBanner } from "@components/offline/offline-banner";
 import { AccountMenu, type BusinessOption } from "./account-menu";
+import { BranchSwitcher, type BranchOption } from "./branch-switcher";
 import { MobileNav } from "./mobile-nav";
 import { SidebarNav } from "./sidebar-nav";
 import { SyncRunner } from "./sync-runner";
@@ -16,6 +15,9 @@ export interface ShellProps {
   businessId: string;
   businessName: string;
   branchName: string | null;
+  /** Branches the member may use. The switcher shows only when there is more than one. */
+  branches: BranchOption[];
+  currentBranchId: string | null;
   roleLabel: string;
   user: { name: string; email: string | null };
   businesses: BusinessOption[];
@@ -28,7 +30,7 @@ export interface ShellProps {
  * Desktop (lg+): fixed 256px sidebar with grouped navigation.
  * Mobile: top bar + bottom tab bar with a "More" sheet.
  */
-export function AppShell({ businessId, businessName, branchName, roleLabel, user, businesses, groups, children }: ShellProps) {
+export function AppShell({ businessId, businessName, branchName, branches, currentBranchId, roleLabel, user, businesses, groups, children }: ShellProps) {
   const base = `/app/${businessId}`;
   return (
     <div className="min-h-dvh">
@@ -54,8 +56,11 @@ export function AppShell({ businessId, businessName, branchName, roleLabel, user
           <Link href={`${base}/dashboard`} className="lg:hidden" aria-label="BizManager home"><Logo /></Link>
           <div className="hidden min-w-0 lg:block">
             <p className="truncate text-sm font-semibold text-ink-900">{businessName}</p>
-            {branchName && <p className="truncate text-xs text-ink-500">{branchName}</p>}
+            {branches.length <= 1 && branchName && <p className="truncate text-xs text-ink-500">{branchName}</p>}
           </div>
+          {branches.length > 1 && currentBranchId && (
+            <BranchSwitcher businessId={businessId} branches={branches} currentId={currentBranchId} />
+          )}
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <TopbarSearch base={base} />
             <AccountMenu name={user.name} email={user.email} roleLabel={roleLabel} businesses={businesses} currentId={businessId} />

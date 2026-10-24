@@ -1,43 +1,41 @@
 import Link from "next/link";
 
-const NAV_ITEMS = [
-  { key: "sales", label: "Sales", href: (id: string) => `/app/${id}/reports/sales` },
-  { key: "expenses", label: "Expenses", href: (id: string) => `/app/${id}/reports/expenses` },
-  { key: "profit", label: "Profit", href: (id: string) => `/app/${id}/reports/profit` },
-  { key: "inventory", label: "Inventory", href: (id: string) => `/app/${id}/reports/inventory` },
-  { key: "products", label: "Products", href: (id: string) => `/app/${id}/reports/products` },
+const TABS = [
+  { key: "sales", label: "Sales" },
+  { key: "profit", label: "Profit" },
+  { key: "products", label: "Products" },
+  { key: "inventory", label: "Inventory" },
+  { key: "expenses", label: "Expenses" },
+  { key: "branches", label: "Branches" },
 ] as const;
 
-type NavKey = (typeof NAV_ITEMS)[number]["key"];
+export type ReportTab = (typeof TABS)[number]["key"];
 
-interface ReportNavProps {
+/** Shared tab bar for every report page. */
+export function ReportNav({
+  businessId,
+  active,
+  showBranches = false,
+}: {
   businessId: string;
-  active: NavKey;
-}
-
-export function ReportNav({ businessId, active }: ReportNavProps) {
+  active: ReportTab;
+  /** The Branches tab is only useful (and shown) in a multi-branch business. */
+  showBranches?: boolean;
+}) {
   return (
-    <nav
-      aria-label="Report sections"
-      className="flex gap-1 overflow-x-auto rounded-lg border border-gray-200 bg-gray-50 p-1"
-    >
-      {NAV_ITEMS.map((item) => {
-        const isActive = item.key === active;
-        return (
-          <Link
-            key={item.key}
-            href={item.href(businessId)}
-            aria-current={isActive ? "page" : undefined}
-            className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              isActive
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {item.label}
-          </Link>
-        );
-      })}
+    <nav aria-label="Reports" className="flex gap-1 overflow-x-auto border-b border-line">
+      {TABS.filter((t) => t.key !== "branches" || showBranches || active === "branches").map((t) => (
+        <Link
+          key={t.key}
+          href={`/app/${businessId}/reports/${t.key}`}
+          aria-current={active === t.key ? "page" : undefined}
+          className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition ${
+            active === t.key ? "border-brand-600 text-brand-800" : "border-transparent text-ink-600 hover:text-ink-900"
+          }`}
+        >
+          {t.label}
+        </Link>
+      ))}
     </nav>
   );
 }
