@@ -405,6 +405,45 @@ describe("idempotency", () => {
     expect((fakeTx.customerDebtRepayment.create as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
   });
 
+  it("replay with same operationId but changed verificationStatus leaves outstanding unchanged", async () => {
+    // Scenario: first call stored the payment as PENDING_VERIFICATION.
+    // Caller retries with verificationStatus: "VERIFIED" on the same operationId.
+    // The stored record is PENDING, so verifiedSum must be 0 and outstanding
+    // must not change — no creditAccount was ever called for this payment.
+    const debt = makeDebt(1000);
+    const fakeTx = makeFakeTx();
+
+    // The idempotency lookup returns the original PENDING record
+    const existingPendingRepayment = makeRepayment(1000, "PENDING_VERIFICATION");
+    (fakeTx.customerDebtRepayment.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(existingPendingRepayment);
+    (fakeTx.customerDebt.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(debt);
+    const updatedDebt = { ...debt, outstandingMinor: 1000 };
+    (fakeTx.customerDebt.update as ReturnType<typeof vi.fn>).mockResolvedValue(updatedDebt);
+
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (cb: (tx: Tx) => Promise<unknown>) => cb(fakeTx),
+    );
+
+    const result = await recordRepayment(ctx, {
+      debtId: DEBT_ID,
+      payments: [
+        // Caller now claims VERIFIED, but the stored record is still PENDING
+        { amountMinor: 1000, paymentMethod: "CASH", verificationStatus: "VERIFIED", operationId: "rep-op-001" },
+      ],
+    });
+
+    // verifiedSum must be derived from the stored record (PENDING), so 0
+    // outstanding must not change
+    expect(result.updatedDebt.outstandingMinor).toBe(1000);
+    expect(result.overpaymentCredit).toBeNull();
+
+    const updateCall = (fakeTx.customerDebt.update as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+    expect(updateCall?.data?.outstandingMinor).toBe(1000);
+
+    // No new repayment row was created
+    expect((fakeTx.customerDebtRepayment.create as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+  });
+
   it("createCustomerCredit: returns existing record when operationId matches", async () => {
     const fakeTx = makeFakeTx();
 

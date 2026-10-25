@@ -137,9 +137,14 @@ export async function recordRepayment(
       repayments.push(repayment);
     }
 
-    const verifiedSum = input.payments
-      .filter((p) => p.verificationStatus === "VERIFIED")
-      .reduce((s, p) => s + p.amountMinor, 0);
+    // IMPORTANT: compute verifiedSum from the *stored* repayment records, not
+    // from input.payments. On a replay, the stored record keeps its original
+    // verificationStatus even if the caller changes the field in the retry —
+    // reading from input would silently apply a wrong outstanding reduction
+    // without any corresponding creditAccount call.
+    const verifiedSum = repayments
+      .filter((r) => r.verificationStatus === "VERIFIED")
+      .reduce((s, r) => s + r.amountMinor, 0);
 
     let overpaymentCredit: CustomerCredit | null = null;
     let newOutstanding: number;
@@ -149,8 +154,9 @@ export async function recordRepayment(
     } else {
       const excess = verifiedSum - debt.outstandingMinor;
       newOutstanding = 0;
+      // Use the operationId from the first stored VERIFIED repayment.
       const firstOpId =
-        input.payments.find((p) => p.verificationStatus === "VERIFIED")?.operationId ?? "overpay";
+        repayments.find((r) => r.verificationStatus === "VERIFIED")?.operationId ?? "overpay";
       overpaymentCredit = await tx.customerCredit.create({
         data: {
           businessId: ctx.businessId,
