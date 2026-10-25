@@ -5,7 +5,7 @@ import { Badge } from "@components/ui/primitives";
 import { OfflineBanner } from "@components/offline/offline-banner";
 import { AccountMenu, type BusinessOption } from "./account-menu";
 import { BranchSwitcher, type BranchOption } from "./branch-switcher";
-import { MobileNav } from "./mobile-nav";
+import { BottomNav } from "./bottom-nav";
 import { SidebarNav } from "./sidebar-nav";
 import { SyncRunner } from "./sync-runner";
 import { TopbarSearch } from "./topbar-search";
@@ -75,7 +75,7 @@ export function AppShell({ businessId, businessName, branchName, branches, curre
         </main>
       </div>
 
-      <MobileNav groups={groups} base={base} />
+      <BottomNav businessId={businessId} />
     </div>
   );
 }

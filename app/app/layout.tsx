@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { getSessionUserId } from "@server/auth/session";
 import { getUserById } from "@server/services/user.service";
 import { getBusinessesForUser } from "@server/services/business.service";
+import { SWRegister } from "@components/layout/sw-register";
 
 // This layout reads cookies — must not be statically prerendered.
 export const instant = false;
@@ -26,5 +27,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   if (businesses.length === 0) redirect("/create-business");
 
   // Pass children straight through — the [businessId] layout renders the shell.
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <SWRegister />
+    </>
+  );
 }
