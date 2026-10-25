@@ -1,6 +1,7 @@
 
 import "server-only";
 import type { Subscription, Plan } from "@prisma/client";
+import { SubscriptionStatus } from "@prisma/client";
 import { prisma } from "@server/db/prisma";
 import { appError } from "@shared/errors";
 import type { TenantContext } from "@shared/types/auth.types";
@@ -21,6 +22,110 @@ import { decideAccess, type AccessDecision } from "@shared/subscription-access";
 
 export { FEATURE_KEYS, LIMIT_KEYS };
 export type { FeatureKey, LimitKey };
+
+// ─── Transaction client type ────────────────────────────────────────────────
+
+/** Prisma interactive transaction client — passed from $transaction callbacks. */
+export type PrismaTransactionClient = Parameters<
+  Parameters<typeof prisma.$transaction>[0]
+>[0];
+
+// ─── Trial subscription creation ────────────────────────────────────────────
+
+/**
+ * Create a 14-day TRIAL subscription for a newly-created business.
+ * Called inside the createBusiness transaction so the subscription and
+ * business are created atomically.
+ *
+ * Returns null when no plans exist yet (e.g. before seed has run in CI).
+ * The caller must handle null gracefully — lack of a subscription at
+ * business creation is not a fatal error; the owner will subscribe later.
+ */
+export async function createTrialSubscription(
+  businessId: string,
+  tx: PrismaTransactionClient,
+): Promise<Subscription | null> {
+  // Find the BASIC plan (lowest tier); fall back to any active plan.
+  const plan = await tx.plan.findFirst({
+    where: { isActive: true },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  // If the database has no plans at all (fresh DB before seed runs), skip.
+  if (!plan) return null;
+
+  const now = new Date();
+  const trialEnd = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+
+  return tx.subscription.create({
+    data: {
+      businessId,
+      planId: plan.id,
+      status: "TRIAL",
+      trialEndsAt: trialEnd,
+      currentPeriodStart: now,
+      currentPeriodEnd: trialEnd,
+    },
+  });
+}
+
+// ─── Simple named accessors (used by settings page and feature gates) ────────
+
+/**
+ * Load the subscription with its plan for a given business context.
+ * Returns null when the business has no subscription yet.
+ */
+export async function getSubscription(
+  ctx: TenantContext,
+): Promise<(Subscription & { plan: Plan }) | null> {
+  return prisma.subscription.findUnique({
+    where: { businessId: ctx.businessId },
+    include: { plan: true },
+  });
+}
+
+/**
+ * Check whether the business's current plan includes a feature.
+ * Throws a subscription-limit error when the feature is not available.
+ */
+export async function checkFeatureEntitlement(
+  ctx: TenantContext,
+  featureKey: FeatureKey,
+): Promise<void> {
+  await requireFeature(ctx, featureKey);
+}
+
+/**
+ * Check whether the business is within a usage limit.
+ * `currentUsage` is the caller-supplied current count.
+ * Throws a subscription-limit error when the limit is exceeded.
+ */
+export async function checkUsageLimit(
+  ctx: TenantContext,
+  limitKey: LimitKey,
+  currentUsage: number,
+): Promise<void> {
+  await assertWithinLimit(ctx, limitKey, async () => currentUsage);
+}
+
+/**
+ * Update a subscription's status.  Used by the platform-admin approval flow
+ * and by background jobs that expire trials and grace periods.
+ */
+export async function updateSubscriptionStatus(
+  businessId: string,
+  status: SubscriptionStatus,
+): Promise<Subscription> {
+  const subscription = await prisma.subscription.findUnique({
+    where: { businessId },
+  });
+  if (!subscription) throw appError.notFound("Subscription not found.");
+
+  return prisma.subscription.update({
+    where: { businessId },
+    data: { status },
+  });
+}
 
 export interface SubscriptionAccess {
   decision: AccessDecision;
