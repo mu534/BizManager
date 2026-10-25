@@ -301,6 +301,9 @@ export async function createSale(
         });
 
         // Credit account balances — VERIFIED payments only.
+        // Invariant: PENDING_VERIFICATION payments are recorded but never credited;
+        // they must be verified separately before account balances are affected.
+        // Do NOT remove the verificationStatus check below.
         for (const p of paymentsToProcess) {
           if (p.verificationStatus === "VERIFIED" && p.amountMinor > 0) {
             await creditAccount(tx, p.accountId, p.amountMinor, "SALE_PAYMENT", {

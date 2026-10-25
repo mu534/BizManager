@@ -144,7 +144,13 @@ export async function recordRepayment(
       newOutstanding = 0;
       const firstOpId =
         input.payments.find((p) => p.verificationStatus === "VERIFIED")?.operationId ?? "overpay";
-      overpaymentCredit = await tx.customerCredit.create({
+      const overpayOpId = `${firstOpId}-overpay`;
+      // Idempotency: a retry may re-enter this branch after repayment rows already
+      // exist (taken via continue above). Guard with findUnique to avoid P2002.
+      const existingCredit = await tx.customerCredit.findUnique({
+        where: { operationId: overpayOpId },
+      });
+      overpaymentCredit = existingCredit ?? await tx.customerCredit.create({
         data: {
           businessId: ctx.businessId,
           customerId: debt.customerId,
@@ -152,7 +158,7 @@ export async function recordRepayment(
           reason: "Overpayment on debt repayment",
           sourceType: "OVERPAYMENT",
           sourceId: debt.id,
-          operationId: `${firstOpId}-overpay`,
+          operationId: overpayOpId,
         },
       });
     }
@@ -196,17 +202,26 @@ export async function verifyRepayment(
       } else {
         const excess = repayment.amountMinor - debt.outstandingMinor;
         newOutstanding = 0;
-        await tx.customerCredit.create({
-          data: {
-            businessId: ctx.businessId,
-            customerId: repayment.customerId,
-            amountMinor: excess,
-            reason: "Overpayment on verification",
-            sourceType: "OVERPAYMENT",
-            sourceId: debt.id,
-            operationId: `${repaymentId}-verify-overpay`,
-          },
+        const verifyOverpayOpId = `${repaymentId}-verify-overpay`;
+        // Idempotency: on a retry the repayment row already exists but this
+        // transaction re-enters the overpayment branch. Guard with findUnique
+        // to avoid a P2002 on the unique operationId index.
+        const existingCredit = await tx.customerCredit.findUnique({
+          where: { operationId: verifyOverpayOpId },
         });
+        if (!existingCredit) {
+          await tx.customerCredit.create({
+            data: {
+              businessId: ctx.businessId,
+              customerId: repayment.customerId,
+              amountMinor: excess,
+              reason: "Overpayment on verification",
+              sourceType: "OVERPAYMENT",
+              sourceId: debt.id,
+              operationId: verifyOverpayOpId,
+            },
+          });
+        }
       }
 
       await tx.customerDebt.update({
