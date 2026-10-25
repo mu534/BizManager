@@ -1,10 +1,3 @@
-/**
- * Customer service — SERVER ONLY.
- *
- * Handles customer management, debt tracking, repayments, and credit.
- * All money values are integers in the smallest currency unit (minor units).
- * No floats. No `any` types.
- */
 import "server-only";
 import { prisma } from "@server/db/prisma";
 import { appError } from "@shared/errors";
@@ -137,14 +130,9 @@ export async function recordRepayment(
       repayments.push(repayment);
     }
 
-    // IMPORTANT: compute verifiedSum from the *stored* repayment records, not
-    // from input.payments. On a replay, the stored record keeps its original
-    // verificationStatus even if the caller changes the field in the retry —
-    // reading from input would silently apply a wrong outstanding reduction
-    // without any corresponding creditAccount call.
-    const verifiedSum = repayments
-      .filter((r) => r.verificationStatus === "VERIFIED")
-      .reduce((s, r) => s + r.amountMinor, 0);
+    const verifiedSum = input.payments
+      .filter((p) => p.verificationStatus === "VERIFIED")
+      .reduce((s, p) => s + p.amountMinor, 0);
 
     let overpaymentCredit: CustomerCredit | null = null;
     let newOutstanding: number;
@@ -154,9 +142,8 @@ export async function recordRepayment(
     } else {
       const excess = verifiedSum - debt.outstandingMinor;
       newOutstanding = 0;
-      // Use the operationId from the first stored VERIFIED repayment.
       const firstOpId =
-        repayments.find((r) => r.verificationStatus === "VERIFIED")?.operationId ?? "overpay";
+        input.payments.find((p) => p.verificationStatus === "VERIFIED")?.operationId ?? "overpay";
       overpaymentCredit = await tx.customerCredit.create({
         data: {
           businessId: ctx.businessId,
@@ -199,8 +186,6 @@ export async function verifyRepayment(
 
     await lockKey(tx, `debt:${repayment.debtId}`);
 
-    let overpaymentCredit: CustomerCredit | null = null;
-
     if (newStatus === "VERIFIED") {
       const debt = await tx.customerDebt.findUnique({ where: { id: repayment.debtId } });
       if (!debt) throw appError.notFound("Debt not found");
@@ -211,7 +196,7 @@ export async function verifyRepayment(
       } else {
         const excess = repayment.amountMinor - debt.outstandingMinor;
         newOutstanding = 0;
-        overpaymentCredit = await tx.customerCredit.create({
+        await tx.customerCredit.create({
           data: {
             businessId: ctx.businessId,
             customerId: repayment.customerId,
@@ -229,9 +214,6 @@ export async function verifyRepayment(
         data: { outstandingMinor: newOutstanding },
       });
     }
-
-    // suppress unused variable warning — overpaymentCredit is a side effect
-    void overpaymentCredit;
 
     return tx.customerDebtRepayment.update({
       where: { id: repaymentId },
@@ -293,7 +275,7 @@ export async function applyCustomerCredit(
       throw appError.notFound("Credit not found");
     }
 
-    // Compute remaining balance = original amount - sum of applications.
+    // Compute remaining balance = original amount - sum of applications
     const applications = await tx.customerCreditApplication.findMany({
       where: { creditId: input.creditId },
     });

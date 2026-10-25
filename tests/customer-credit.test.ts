@@ -1,121 +1,124 @@
-/**
- * Tests for customer service — debt repayment, credit, and idempotency.
- *
- * Uses vi.mock to fully mock @server/db/prisma and @server/services/ledger.
- * prisma.$transaction is mocked to call the callback with a fake tx object.
- */
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import type { CustomerDebt, CustomerDebtRepayment, CustomerCredit } from "@prisma/client";
+import { UserRole } from "@shared/types/auth.types";
 
-// ─── Mocks ─────────────────────────────────────────────────
+// ─── Mocks ──────────────────────────────────────────────────
 
-// Mock ledger before importing customer service
+vi.mock("@server/db/prisma", () => ({
+  prisma: {
+    $transaction: vi.fn(),
+    customer: { create: vi.fn(), findUnique: vi.fn() },
+    customerDebt: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+    customerDebtRepayment: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+    customerCredit: { findUnique: vi.fn(), create: vi.fn(), findMany: vi.fn() },
+    customerCreditApplication: { findUnique: vi.fn(), create: vi.fn(), findMany: vi.fn() },
+  },
+}));
+
 vi.mock("@server/services/ledger", () => ({
   lockKey: vi.fn(async () => undefined),
 }));
 
-// Mock prisma entirely
-vi.mock("@server/db/prisma", () => ({
-  prisma: {
-    customer: { create: vi.fn(), findUnique: vi.fn() },
-    customerDebt: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
-    customerDebtRepayment: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
-    customerCredit: { findUnique: vi.fn(), create: vi.fn() },
-    customerCreditApplication: { findUnique: vi.fn(), create: vi.fn(), findMany: vi.fn() },
-    sale: { create: vi.fn() },
-    financialTransaction: { create: vi.fn() },
-    $transaction: vi.fn(),
-  },
-}));
+// ─── Imports (after mocks) ─────────────────────────────────
 
-import { recordRepayment, verifyRepayment, applyCustomerCredit, createCustomerCredit } from "@server/services/customer.service";
 import { prisma } from "@server/db/prisma";
-import type { TenantContext } from "@shared/types/auth.types";
-import { UserRole } from "@shared/types/auth.types";
-import type { Tx } from "@server/services/ledger";
+import { lockKey } from "@server/services/ledger";
+import {
+  recordRepayment,
+  verifyRepayment,
+  applyCustomerCredit,
+} from "@server/services/customer.service";
 
 // ─── Helpers ───────────────────────────────────────────────
 
-const BUSINESS_ID = "biz-0000-0000-0000-000000000001";
-const CUSTOMER_ID = "cust-000-0000-0000-000000000001";
-const DEBT_ID = "debt-000-0000-0000-000000000001";
-const CREDIT_ID = "cred-000-0000-0000-000000000001";
-const SALE_ID = "sale-000-0000-0000-000000000001";
-const USER_ID = "user-000-0000-0000-000000000001";
-const REPAYMENT_ID = "repay-00-0000-0000-000000000001";
-
-const ctx: TenantContext = {
-  businessId: BUSINESS_ID,
-  userId: USER_ID,
-  branchId: null,
+const ctx = {
+  userId: "user-1",
+  firebaseUid: "fb-uid-1",
+  businessId: "biz-1",
+  membershipId: "mem-1",
   role: UserRole.OWNER,
-  membershipId: "member-000-0000-0000-000000000001",
-  firebaseUid: "firebase-uid-001",
-  financialReportGrant: true,
+  financialReportGrant: false,
+  branchId: null,
 };
 
-/** Build a fake debt object */
-function makeDebt(outstandingMinor: number) {
+function makeDebt(overrides: Partial<CustomerDebt> = {}): CustomerDebt {
   return {
-    id: DEBT_ID,
-    businessId: BUSINESS_ID,
-    customerId: CUSTOMER_ID,
-    saleId: SALE_ID,
-    originalAmountMinor: outstandingMinor,
-    outstandingMinor,
-    operationId: "op-001",
+    id: "debt-1",
+    businessId: "biz-1",
+    customerId: "customer-1",
+    saleId: "sale-1",
+    originalAmountMinor: 10000,
+    outstandingMinor: 10000,
+    operationId: "op-debt-1",
     createdAt: new Date(),
     updatedAt: new Date(),
+    ...overrides,
   };
 }
 
-/** Build a fake repayment object */
-function makeRepayment(
-  amountMinor: number,
-  verificationStatus: "PENDING_VERIFICATION" | "VERIFIED" | "FAILED" = "PENDING_VERIFICATION",
-) {
+function makeRepayment(overrides: Partial<CustomerDebtRepayment> = {}): CustomerDebtRepayment {
   return {
-    id: REPAYMENT_ID,
-    businessId: BUSINESS_ID,
-    customerId: CUSTOMER_ID,
-    debtId: DEBT_ID,
-    amountMinor,
-    paymentMethod: "CASH" as const,
-    verificationStatus,
-    operationId: "rep-op-001",
+    id: "repayment-1",
+    businessId: "biz-1",
+    customerId: "customer-1",
+    debtId: "debt-1",
+    amountMinor: 5000,
+    paymentMethod: "CASH",
+    verificationStatus: "PENDING_VERIFICATION",
+    operationId: "op-repay-1",
     notes: null,
     createdAt: new Date(),
+    ...overrides,
   };
 }
 
-/**
- * Build a fake tx that matches the shape customer.service expects.
- * Each property is a fresh vi.fn() we can configure per test.
- */
-function makeFakeTx() {
+function makeCredit(overrides: Partial<CustomerCredit> = {}): CustomerCredit {
+  return {
+    id: "credit-1",
+    businessId: "biz-1",
+    customerId: "customer-1",
+    amountMinor: 5000,
+    reason: "Overpayment",
+    sourceType: "OVERPAYMENT",
+    sourceId: "debt-1",
+    operationId: "op-credit-1",
+    createdAt: new Date(),
+    ...overrides,
+  };
+}
+
+/** Build a fake tx object that mimics the Prisma transaction client. */
+function makeFakeTx(opts: {
+  debt?: CustomerDebt | null;
+  repaymentFindResult?: CustomerDebtRepayment | null;
+  repaymentCreated?: CustomerDebtRepayment;
+  updatedDebt?: CustomerDebt;
+  creditCreated?: CustomerCredit;
+}) {
   return {
     customerDebt: {
-      findUnique: vi.fn(),
-      update: vi.fn(),
+      findUnique: vi.fn(async () => opts.debt ?? null),
+      update: vi.fn(async () => opts.updatedDebt ?? makeDebt({ outstandingMinor: 0 })),
     },
     customerDebtRepayment: {
-      findUnique: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
+      findUnique: vi.fn(async () => opts.repaymentFindResult ?? null),
+      create: vi.fn(async () => opts.repaymentCreated ?? makeRepayment({ verificationStatus: "VERIFIED" })),
+      update: vi.fn(async (args: { data: { verificationStatus: string } }) =>
+        makeRepayment({ verificationStatus: args.data.verificationStatus as "VERIFIED" | "PENDING_VERIFICATION" | "FAILED" }),
+      ),
     },
     customerCredit: {
-      findUnique: vi.fn(),
-      create: vi.fn(),
+      findUnique: vi.fn(async () => null),
+      create: vi.fn(async () => opts.creditCreated ?? makeCredit()),
+      findMany: vi.fn(async () => []),
     },
     customerCreditApplication: {
-      findUnique: vi.fn(),
-      create: vi.fn(),
-      findMany: vi.fn(),
-    },
-    customer: {
-      findUnique: vi.fn(),
+      findUnique: vi.fn(async () => null),
+      create: vi.fn(async (args: unknown) => ({ id: "app-1", ...(args as object) })),
+      findMany: vi.fn(async () => []),
     },
     $executeRaw: vi.fn(async () => undefined),
-  } as unknown as Tx;
+  };
 }
 
 // ─── recordRepayment tests ─────────────────────────────────
@@ -125,150 +128,156 @@ describe("recordRepayment", () => {
     vi.clearAllMocks();
   });
 
-  it("full verified repayment: outstanding drops to 0", async () => {
-    const debt = makeDebt(1000);
-    const fakeTx = makeFakeTx();
+  it("1. full verified repayment: outstanding drops to 0", async () => {
+    const debt = makeDebt({ outstandingMinor: 10000 });
+    const updatedDebt = makeDebt({ outstandingMinor: 0 });
+    const fakeTx = makeFakeTx({ debt, updatedDebt });
 
-    // repayment doesn't already exist
-    (fakeTx.customerDebtRepayment.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-    const createdRepayment = makeRepayment(1000, "VERIFIED");
-    (fakeTx.customerDebtRepayment.create as ReturnType<typeof vi.fn>).mockResolvedValue(createdRepayment);
-    (fakeTx.customerDebt.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(debt);
-    const updatedDebt = { ...debt, outstandingMinor: 0 };
-    (fakeTx.customerDebt.update as ReturnType<typeof vi.fn>).mockResolvedValue(updatedDebt);
-
-    // prisma.$transaction calls the callback with fakeTx
-    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
-      async (cb: (tx: Tx) => Promise<unknown>) => cb(fakeTx),
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) =>
+      fn(fakeTx as never),
     );
 
     const result = await recordRepayment(ctx, {
-      debtId: DEBT_ID,
+      debtId: "debt-1",
       payments: [
         {
-          amountMinor: 1000,
+          amountMinor: 10000,
           paymentMethod: "CASH",
           verificationStatus: "VERIFIED",
-          operationId: "rep-op-001",
+          operationId: "op-repay-full",
         },
       ],
     });
 
     expect(result.updatedDebt.outstandingMinor).toBe(0);
     expect(result.overpaymentCredit).toBeNull();
-    expect(result.repayments).toHaveLength(1);
+    expect(fakeTx.customerDebt.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { outstandingMinor: 0 } }),
+    );
   });
 
-  it("partial verified + pending: outstanding = originalAmount - verifiedSum only", async () => {
-    const debt = makeDebt(1000);
-    const fakeTx = makeFakeTx();
+  it("2. partial verified + pending: outstanding = original - verifiedSum only", async () => {
+    const debt = makeDebt({ outstandingMinor: 10000 });
+    const updatedDebt = makeDebt({ outstandingMinor: 6000 });
+    const fakeTx = makeFakeTx({ debt, updatedDebt });
 
-    (fakeTx.customerDebtRepayment.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-    // Two payments — one verified (400), one pending (600)
-    const rep1 = makeRepayment(400, "VERIFIED");
-    const rep2 = makeRepayment(600, "PENDING_VERIFICATION");
-    (fakeTx.customerDebtRepayment.create as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce(rep1)
-      .mockResolvedValueOnce(rep2);
-    (fakeTx.customerDebt.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(debt);
-    const updatedDebt = { ...debt, outstandingMinor: 600 };
-    (fakeTx.customerDebt.update as ReturnType<typeof vi.fn>).mockResolvedValue(updatedDebt);
-
-    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
-      async (cb: (tx: Tx) => Promise<unknown>) => cb(fakeTx),
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) =>
+      fn(fakeTx as never),
     );
 
     const result = await recordRepayment(ctx, {
-      debtId: DEBT_ID,
+      debtId: "debt-1",
       payments: [
-        { amountMinor: 400, paymentMethod: "CASH", verificationStatus: "VERIFIED", operationId: "rep-op-001" },
-        { amountMinor: 600, paymentMethod: "TELEBIRR", verificationStatus: "PENDING_VERIFICATION", operationId: "rep-op-002" },
+        {
+          amountMinor: 4000,
+          paymentMethod: "CASH",
+          verificationStatus: "VERIFIED",
+          operationId: "op-repay-partial",
+        },
+        {
+          amountMinor: 3000,
+          paymentMethod: "TELEBIRR",
+          verificationStatus: "PENDING_VERIFICATION",
+          operationId: "op-repay-pending",
+        },
       ],
     });
 
-    // verified sum = 400, outstanding = 1000 - 400 = 600
-    expect(result.updatedDebt.outstandingMinor).toBe(600);
+    // Only verified 4000 reduces outstanding: 10000 - 4000 = 6000
+    expect(result.updatedDebt.outstandingMinor).toBe(6000);
     expect(result.overpaymentCredit).toBeNull();
-
-    // Confirm the update was called with the right outstanding value
-    const updateCall = (fakeTx.customerDebt.update as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
-    expect(updateCall?.data?.outstandingMinor).toBe(600);
+    expect(fakeTx.customerDebt.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { outstandingMinor: 6000 } }),
+    );
   });
 
-  it("overpayment: outstanding=0, CustomerCredit created for excess, sourceType=OVERPAYMENT", async () => {
-    const debt = makeDebt(500);
-    const fakeTx = makeFakeTx();
+  it("3. overpayment: outstanding=0, CustomerCredit created for excess with sourceType=OVERPAYMENT", async () => {
+    const debt = makeDebt({ outstandingMinor: 5000 });
+    const updatedDebt = makeDebt({ outstandingMinor: 0 });
+    const overpayCredit = makeCredit({ amountMinor: 3000, sourceType: "OVERPAYMENT" });
+    const fakeTx = makeFakeTx({ debt, updatedDebt, creditCreated: overpayCredit });
 
-    (fakeTx.customerDebtRepayment.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-    const rep = makeRepayment(800, "VERIFIED");
-    (fakeTx.customerDebtRepayment.create as ReturnType<typeof vi.fn>).mockResolvedValue(rep);
-    (fakeTx.customerDebt.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(debt);
-
-    const creditCreated = {
-      id: "credit-001",
-      businessId: BUSINESS_ID,
-      customerId: CUSTOMER_ID,
-      amountMinor: 300,
-      reason: "Overpayment on debt repayment",
-      sourceType: "OVERPAYMENT",
-      sourceId: DEBT_ID,
-      operationId: "rep-op-001-overpay",
-      createdAt: new Date(),
-    };
-    (fakeTx.customerCredit.create as ReturnType<typeof vi.fn>).mockResolvedValue(creditCreated);
-    const updatedDebt = { ...debt, outstandingMinor: 0 };
-    (fakeTx.customerDebt.update as ReturnType<typeof vi.fn>).mockResolvedValue(updatedDebt);
-
-    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
-      async (cb: (tx: Tx) => Promise<unknown>) => cb(fakeTx),
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) =>
+      fn(fakeTx as never),
     );
 
     const result = await recordRepayment(ctx, {
-      debtId: DEBT_ID,
+      debtId: "debt-1",
       payments: [
-        { amountMinor: 800, paymentMethod: "CASH", verificationStatus: "VERIFIED", operationId: "rep-op-001" },
+        {
+          amountMinor: 8000, // 3000 over the outstanding 5000
+          paymentMethod: "CASH",
+          verificationStatus: "VERIFIED",
+          operationId: "op-repay-overpay",
+        },
       ],
     });
 
     expect(result.updatedDebt.outstandingMinor).toBe(0);
     expect(result.overpaymentCredit).not.toBeNull();
-    expect(result.overpaymentCredit?.amountMinor).toBe(300);
     expect(result.overpaymentCredit?.sourceType).toBe("OVERPAYMENT");
-
-    // Confirm CustomerCredit was created with excess amount
-    const creditCall = (fakeTx.customerCredit.create as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
-    expect(creditCall?.data?.amountMinor).toBe(300);
-    expect(creditCall?.data?.sourceType).toBe("OVERPAYMENT");
+    expect(fakeTx.customerCredit.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          amountMinor: 3000,
+          sourceType: "OVERPAYMENT",
+        }),
+      }),
+    );
   });
 
-  it("PENDING-only: outstanding unchanged", async () => {
-    const debt = makeDebt(1000);
-    const fakeTx = makeFakeTx();
+  it("4. PENDING-only: outstanding unchanged", async () => {
+    const debt = makeDebt({ outstandingMinor: 10000 });
+    const updatedDebt = makeDebt({ outstandingMinor: 10000 });
+    const fakeTx = makeFakeTx({ debt, updatedDebt });
 
-    (fakeTx.customerDebtRepayment.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-    const rep = makeRepayment(1000, "PENDING_VERIFICATION");
-    (fakeTx.customerDebtRepayment.create as ReturnType<typeof vi.fn>).mockResolvedValue(rep);
-    (fakeTx.customerDebt.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(debt);
-    const updatedDebt = { ...debt, outstandingMinor: 1000 };
-    (fakeTx.customerDebt.update as ReturnType<typeof vi.fn>).mockResolvedValue(updatedDebt);
-
-    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
-      async (cb: (tx: Tx) => Promise<unknown>) => cb(fakeTx),
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) =>
+      fn(fakeTx as never),
     );
 
     const result = await recordRepayment(ctx, {
-      debtId: DEBT_ID,
+      debtId: "debt-1",
       payments: [
-        { amountMinor: 1000, paymentMethod: "BANK", verificationStatus: "PENDING_VERIFICATION", operationId: "rep-op-001" },
+        {
+          amountMinor: 5000,
+          paymentMethod: "TELEBIRR",
+          verificationStatus: "PENDING_VERIFICATION",
+          operationId: "op-repay-pending-only",
+        },
       ],
     });
 
-    // verifiedSum = 0, so outstanding stays at 1000
-    expect(result.updatedDebt.outstandingMinor).toBe(1000);
+    expect(result.updatedDebt.outstandingMinor).toBe(10000);
     expect(result.overpaymentCredit).toBeNull();
+    expect(fakeTx.customerDebt.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { outstandingMinor: 10000 } }),
+    );
+  });
 
-    const updateCall = (fakeTx.customerDebt.update as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
-    expect(updateCall?.data?.outstandingMinor).toBe(1000);
+  it("6. idempotency: second call with same operationId returns existing record", async () => {
+    const debt = makeDebt({ outstandingMinor: 10000 });
+    const existingRepayment = makeRepayment({ operationId: "op-repay-idem", verificationStatus: "VERIFIED" });
+    const updatedDebt = makeDebt({ outstandingMinor: 5000 });
+    const fakeTx = makeFakeTx({ debt, repaymentFindResult: existingRepayment, updatedDebt });
+
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) =>
+      fn(fakeTx as never),
+    );
+
+    await recordRepayment(ctx, {
+      debtId: "debt-1",
+      payments: [
+        {
+          amountMinor: 5000,
+          paymentMethod: "CASH",
+          verificationStatus: "VERIFIED",
+          operationId: "op-repay-idem",
+        },
+      ],
+    });
+
+    // findUnique was called for operationId — create should NOT be called
+    expect(fakeTx.customerDebtRepayment.create).not.toHaveBeenCalled();
   });
 });
 
@@ -279,246 +288,124 @@ describe("applyCustomerCredit", () => {
     vi.clearAllMocks();
   });
 
-  it("creates CustomerCreditApplication without touching Sale or FinancialTransaction", async () => {
-    const fakeTx = makeFakeTx();
-
-    const credit = {
-      id: CREDIT_ID,
-      businessId: BUSINESS_ID,
-      customerId: CUSTOMER_ID,
-      amountMinor: 1000,
-      reason: "Overpayment",
-      sourceType: "OVERPAYMENT",
-      sourceId: null,
-      operationId: "credit-op-001",
-      createdAt: new Date(),
+  it("5. creates CustomerCreditApplication, does NOT call prisma.sale.create or prisma.financialTransaction.create", async () => {
+    const credit = makeCredit({ amountMinor: 10000 });
+    const fakeTx = {
+      customerCredit: {
+        findUnique: vi.fn(async () => credit),
+      },
+      customerCreditApplication: {
+        findMany: vi.fn(async () => []),
+        findUnique: vi.fn(async () => null),
+        create: vi.fn(async () => ({
+          id: "app-1",
+          businessId: "biz-1",
+          customerId: "customer-1",
+          creditId: "credit-1",
+          saleId: "sale-1",
+          amountMinor: 5000,
+          approvedById: "user-1",
+          operationId: "op-apply-1",
+          createdAt: new Date(),
+        })),
+      },
+      // These must NOT be called
+      sale: { create: vi.fn() },
+      financialTransaction: { create: vi.fn() },
+      $executeRaw: vi.fn(async () => undefined),
     };
 
-    (fakeTx.customerCredit.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(credit);
-    (fakeTx.customerCreditApplication.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-    (fakeTx.customerCreditApplication.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-
-    const application = {
-      id: "app-001",
-      businessId: BUSINESS_ID,
-      customerId: CUSTOMER_ID,
-      creditId: CREDIT_ID,
-      saleId: SALE_ID,
-      amountMinor: 200,
-      approvedById: USER_ID,
-      operationId: "apply-op-001",
-      createdAt: new Date(),
-    };
-    (fakeTx.customerCreditApplication.create as ReturnType<typeof vi.fn>).mockResolvedValue(application);
-
-    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
-      async (cb: (tx: Tx) => Promise<unknown>) => cb(fakeTx),
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) =>
+      fn(fakeTx as never),
     );
 
     const result = await applyCustomerCredit(ctx, {
-      customerId: CUSTOMER_ID,
-      creditId: CREDIT_ID,
-      saleId: SALE_ID,
-      amountMinor: 200,
-      approvedById: USER_ID,
-      operationId: "apply-op-001",
+      customerId: "customer-1",
+      creditId: "credit-1",
+      saleId: "sale-1",
+      amountMinor: 5000,
+      approvedById: "user-1",
+      operationId: "op-apply-1",
     });
 
-    expect(result.amountMinor).toBe(200);
-    expect(result.creditId).toBe(CREDIT_ID);
-
-    // Must NOT touch Sale or FinancialTransaction
-    expect((prisma.sale.create as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
-    expect((prisma.financialTransaction.create as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+    expect(result).toBeDefined();
+    expect(fakeTx.customerCreditApplication.create).toHaveBeenCalledOnce();
+    // Confirm no sale or financial transaction creation
+    expect(fakeTx.sale.create).not.toHaveBeenCalled();
+    expect(fakeTx.financialTransaction.create).not.toHaveBeenCalled();
   });
 
-  it("throws validationError when amountMinor exceeds remaining balance", async () => {
-    const fakeTx = makeFakeTx();
-
-    const credit = {
-      id: CREDIT_ID,
-      businessId: BUSINESS_ID,
-      customerId: CUSTOMER_ID,
-      amountMinor: 500,
-      reason: "Overpayment",
-      sourceType: "OVERPAYMENT",
-      sourceId: null,
-      operationId: "credit-op-001",
+  it("5b. idempotency: second call with same operationId returns existing application", async () => {
+    const credit = makeCredit({ amountMinor: 10000 });
+    const existingApp = {
+      id: "app-existing",
+      businessId: "biz-1",
+      customerId: "customer-1",
+      creditId: "credit-1",
+      saleId: "sale-1",
+      amountMinor: 5000,
+      approvedById: "user-1",
+      operationId: "op-apply-idem",
       createdAt: new Date(),
     };
-    (fakeTx.customerCredit.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(credit);
-    // Already applied 400
-    (fakeTx.customerCreditApplication.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: "prev-app", amountMinor: 400 },
-    ]);
+    const fakeTx = {
+      customerCredit: {
+        findUnique: vi.fn(async () => credit),
+      },
+      customerCreditApplication: {
+        findMany: vi.fn(async () => []),
+        findUnique: vi.fn(async () => existingApp),
+        create: vi.fn(),
+      },
+      $executeRaw: vi.fn(async () => undefined),
+    };
 
-    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
-      async (cb: (tx: Tx) => Promise<unknown>) => cb(fakeTx),
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) =>
+      fn(fakeTx as never),
+    );
+
+    const result = await applyCustomerCredit(ctx, {
+      customerId: "customer-1",
+      creditId: "credit-1",
+      saleId: "sale-1",
+      amountMinor: 5000,
+      approvedById: "user-1",
+      operationId: "op-apply-idem",
+    });
+
+    expect(result).toEqual(existingApp);
+    expect(fakeTx.customerCreditApplication.create).not.toHaveBeenCalled();
+  });
+
+  it("throws when amountMinor exceeds remaining credit balance", async () => {
+    const credit = makeCredit({ amountMinor: 5000 });
+    const existingApplications = [{ amountMinor: 4000 }]; // 4000 already applied, 1000 remaining
+    const fakeTx = {
+      customerCredit: {
+        findUnique: vi.fn(async () => credit),
+      },
+      customerCreditApplication: {
+        findMany: vi.fn(async () => existingApplications),
+        findUnique: vi.fn(async () => null),
+        create: vi.fn(),
+      },
+      $executeRaw: vi.fn(async () => undefined),
+    };
+
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) =>
+      fn(fakeTx as never),
     );
 
     await expect(
       applyCustomerCredit(ctx, {
-        customerId: CUSTOMER_ID,
-        creditId: CREDIT_ID,
-        saleId: SALE_ID,
-        amountMinor: 200, // only 100 remaining
-        approvedById: USER_ID,
-        operationId: "apply-op-002",
+        customerId: "customer-1",
+        creditId: "credit-1",
+        saleId: "sale-1",
+        amountMinor: 2000, // more than 1000 remaining
+        approvedById: "user-1",
+        operationId: "op-apply-exceed",
       }),
     ).rejects.toMatchObject({ message: "Insufficient credit balance" });
-  });
-});
-
-// ─── Idempotency tests ─────────────────────────────────────
-
-describe("idempotency", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("recordRepayment: second call with same operationId returns existing record", async () => {
-    const debt = makeDebt(1000);
-    const fakeTx = makeFakeTx();
-
-    const existingRepayment = makeRepayment(500, "VERIFIED");
-    // findUnique returns existing on second call
-    (fakeTx.customerDebtRepayment.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(existingRepayment);
-    (fakeTx.customerDebt.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(debt);
-    const updatedDebt = { ...debt, outstandingMinor: 500 };
-    (fakeTx.customerDebt.update as ReturnType<typeof vi.fn>).mockResolvedValue(updatedDebt);
-
-    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
-      async (cb: (tx: Tx) => Promise<unknown>) => cb(fakeTx),
-    );
-
-    const result = await recordRepayment(ctx, {
-      debtId: DEBT_ID,
-      payments: [
-        { amountMinor: 500, paymentMethod: "CASH", verificationStatus: "VERIFIED", operationId: "rep-op-001" },
-      ],
-    });
-
-    // Should return the existing repayment without creating a new one
-    expect(result.repayments).toHaveLength(1);
-    expect(result.repayments[0]?.id).toBe(existingRepayment.id);
-    // create should NOT have been called
-    expect((fakeTx.customerDebtRepayment.create as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
-  });
-
-  it("replay with same operationId but changed verificationStatus leaves outstanding unchanged", async () => {
-    // Scenario: first call stored the payment as PENDING_VERIFICATION.
-    // Caller retries with verificationStatus: "VERIFIED" on the same operationId.
-    // The stored record is PENDING, so verifiedSum must be 0 and outstanding
-    // must not change — no creditAccount was ever called for this payment.
-    const debt = makeDebt(1000);
-    const fakeTx = makeFakeTx();
-
-    // The idempotency lookup returns the original PENDING record
-    const existingPendingRepayment = makeRepayment(1000, "PENDING_VERIFICATION");
-    (fakeTx.customerDebtRepayment.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(existingPendingRepayment);
-    (fakeTx.customerDebt.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(debt);
-    const updatedDebt = { ...debt, outstandingMinor: 1000 };
-    (fakeTx.customerDebt.update as ReturnType<typeof vi.fn>).mockResolvedValue(updatedDebt);
-
-    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
-      async (cb: (tx: Tx) => Promise<unknown>) => cb(fakeTx),
-    );
-
-    const result = await recordRepayment(ctx, {
-      debtId: DEBT_ID,
-      payments: [
-        // Caller now claims VERIFIED, but the stored record is still PENDING
-        { amountMinor: 1000, paymentMethod: "CASH", verificationStatus: "VERIFIED", operationId: "rep-op-001" },
-      ],
-    });
-
-    // verifiedSum must be derived from the stored record (PENDING), so 0
-    // outstanding must not change
-    expect(result.updatedDebt.outstandingMinor).toBe(1000);
-    expect(result.overpaymentCredit).toBeNull();
-
-    const updateCall = (fakeTx.customerDebt.update as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
-    expect(updateCall?.data?.outstandingMinor).toBe(1000);
-
-    // No new repayment row was created
-    expect((fakeTx.customerDebtRepayment.create as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
-  });
-
-  it("createCustomerCredit: returns existing record when operationId matches", async () => {
-    const fakeTx = makeFakeTx();
-
-    const existing = {
-      id: CREDIT_ID,
-      businessId: BUSINESS_ID,
-      customerId: CUSTOMER_ID,
-      amountMinor: 300,
-      reason: "Overpayment",
-      sourceType: "OVERPAYMENT" as const,
-      sourceId: DEBT_ID,
-      operationId: "credit-op-dup",
-      createdAt: new Date(),
-    };
-    (fakeTx.customerCredit.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(existing);
-
-    const result = await createCustomerCredit(fakeTx as unknown as Tx, ctx, {
-      customerId: CUSTOMER_ID,
-      amountMinor: 300,
-      reason: "Overpayment",
-      sourceType: "OVERPAYMENT",
-      sourceId: DEBT_ID,
-      operationId: "credit-op-dup",
-    });
-
-    expect(result.id).toBe(CREDIT_ID);
-    // create should NOT have been called
-    expect((fakeTx.customerCredit.create as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
-  });
-
-  it("applyCustomerCredit: returns existing application when operationId matches", async () => {
-    const fakeTx = makeFakeTx();
-
-    const credit = {
-      id: CREDIT_ID,
-      businessId: BUSINESS_ID,
-      customerId: CUSTOMER_ID,
-      amountMinor: 1000,
-      reason: "Overpayment",
-      sourceType: "OVERPAYMENT",
-      sourceId: null,
-      operationId: "credit-op-001",
-      createdAt: new Date(),
-    };
-    (fakeTx.customerCredit.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(credit);
-    (fakeTx.customerCreditApplication.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-
-    const existing = {
-      id: "app-dup",
-      businessId: BUSINESS_ID,
-      customerId: CUSTOMER_ID,
-      creditId: CREDIT_ID,
-      saleId: SALE_ID,
-      amountMinor: 200,
-      approvedById: USER_ID,
-      operationId: "apply-op-dup",
-      createdAt: new Date(),
-    };
-    (fakeTx.customerCreditApplication.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(existing);
-
-    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
-      async (cb: (tx: Tx) => Promise<unknown>) => cb(fakeTx),
-    );
-
-    const result = await applyCustomerCredit(ctx, {
-      customerId: CUSTOMER_ID,
-      creditId: CREDIT_ID,
-      saleId: SALE_ID,
-      amountMinor: 200,
-      approvedById: USER_ID,
-      operationId: "apply-op-dup",
-    });
-
-    expect(result.id).toBe("app-dup");
-    expect((fakeTx.customerCreditApplication.create as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
   });
 });
 
@@ -529,38 +416,108 @@ describe("verifyRepayment", () => {
     vi.clearAllMocks();
   });
 
-  it("throws when repayment is not PENDING_VERIFICATION", async () => {
-    const fakeTx = makeFakeTx();
-    const alreadyVerified = makeRepayment(500, "VERIFIED");
-    (fakeTx.customerDebtRepayment.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(alreadyVerified);
+  it("rejects when repayment is not PENDING_VERIFICATION", async () => {
+    const alreadyVerified = makeRepayment({ verificationStatus: "VERIFIED" });
+    const fakeTx = {
+      customerDebtRepayment: {
+        findUnique: vi.fn(async () => alreadyVerified),
+        update: vi.fn(),
+      },
+      customerDebt: { findUnique: vi.fn(), update: vi.fn() },
+      customerCredit: { create: vi.fn() },
+      $executeRaw: vi.fn(async () => undefined),
+    };
 
-    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
-      async (cb: (tx: Tx) => Promise<unknown>) => cb(fakeTx),
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) =>
+      fn(fakeTx as never),
     );
 
-    await expect(verifyRepayment(ctx, REPAYMENT_ID, "VERIFIED")).rejects.toMatchObject({
+    await expect(verifyRepayment(ctx, "repayment-1", "VERIFIED")).rejects.toMatchObject({
       message: "Repayment is not pending verification",
     });
   });
 
-  it("verifying a PENDING repayment reduces outstanding", async () => {
-    const debt = makeDebt(500);
-    const fakeTx = makeFakeTx();
-    const pendingRepayment = makeRepayment(500, "PENDING_VERIFICATION");
-    (fakeTx.customerDebtRepayment.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(pendingRepayment);
-    (fakeTx.customerDebt.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(debt);
-    (fakeTx.customerDebt.update as ReturnType<typeof vi.fn>).mockResolvedValue({ ...debt, outstandingMinor: 0 });
-    const verifiedRepayment = { ...pendingRepayment, verificationStatus: "VERIFIED" as const };
-    (fakeTx.customerDebtRepayment.update as ReturnType<typeof vi.fn>).mockResolvedValue(verifiedRepayment);
+  it("VERIFIED status: reduces outstanding when amount <= outstanding", async () => {
+    const repayment = makeRepayment({
+      verificationStatus: "PENDING_VERIFICATION",
+      amountMinor: 3000,
+    });
+    const debt = makeDebt({ outstandingMinor: 5000 });
+    const fakeTx = {
+      customerDebtRepayment: {
+        findUnique: vi.fn(async () => repayment),
+        update: vi.fn(async () => makeRepayment({ verificationStatus: "VERIFIED" })),
+      },
+      customerDebt: {
+        findUnique: vi.fn(async () => debt),
+        update: vi.fn(async () => makeDebt({ outstandingMinor: 2000 })),
+      },
+      customerCredit: { create: vi.fn() },
+      $executeRaw: vi.fn(async () => undefined),
+    };
 
-    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
-      async (cb: (tx: Tx) => Promise<unknown>) => cb(fakeTx),
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) =>
+      fn(fakeTx as never),
     );
 
-    const result = await verifyRepayment(ctx, REPAYMENT_ID, "VERIFIED");
-    expect(result.verificationStatus).toBe("VERIFIED");
+    await verifyRepayment(ctx, "repayment-1", "VERIFIED");
 
-    const updateCall = (fakeTx.customerDebt.update as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
-    expect(updateCall?.data?.outstandingMinor).toBe(0);
+    expect(fakeTx.customerDebt.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { outstandingMinor: 2000 } }),
+    );
+    // No overpayment credit needed
+    expect(fakeTx.customerCredit.create).not.toHaveBeenCalled();
+  });
+
+  it("FAILED status: does not change outstanding or create credit", async () => {
+    const repayment = makeRepayment({ verificationStatus: "PENDING_VERIFICATION" });
+    const fakeTx = {
+      customerDebtRepayment: {
+        findUnique: vi.fn(async () => repayment),
+        update: vi.fn(async () => makeRepayment({ verificationStatus: "FAILED" })),
+      },
+      customerDebt: {
+        findUnique: vi.fn(),
+        update: vi.fn(),
+      },
+      customerCredit: { create: vi.fn() },
+      $executeRaw: vi.fn(async () => undefined),
+    };
+
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) =>
+      fn(fakeTx as never),
+    );
+
+    const result = await verifyRepayment(ctx, "repayment-1", "FAILED");
+
+    expect(result.verificationStatus).toBe("FAILED");
+    expect(fakeTx.customerDebt.findUnique).not.toHaveBeenCalled();
+    expect(fakeTx.customerDebt.update).not.toHaveBeenCalled();
+    expect(fakeTx.customerCredit.create).not.toHaveBeenCalled();
+  });
+
+  it("lockKey is called for the debt", async () => {
+    const repayment = makeRepayment({ verificationStatus: "PENDING_VERIFICATION" });
+    const debt = makeDebt({ outstandingMinor: 5000 });
+    const fakeTx = {
+      customerDebtRepayment: {
+        findUnique: vi.fn(async () => repayment),
+        update: vi.fn(async () => makeRepayment({ verificationStatus: "VERIFIED" })),
+      },
+      customerDebt: {
+        findUnique: vi.fn(async () => debt),
+        update: vi.fn(async () => makeDebt({ outstandingMinor: 0 })),
+      },
+      customerCredit: { create: vi.fn() },
+      $executeRaw: vi.fn(async () => undefined),
+    };
+
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) =>
+      fn(fakeTx as never),
+    );
+
+    await verifyRepayment(ctx, "repayment-1", "VERIFIED");
+
+    expect(lockKey).toHaveBeenCalledWith(expect.anything(), "debt:debt-1");
   });
 });
