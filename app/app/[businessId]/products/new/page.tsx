@@ -66,11 +66,11 @@ export default async function NewProductPage({
   return (
     <div className="max-w-2xl space-y-6">
       <div className="flex items-center gap-3">
-        <a href={`/app/${businessId}/products`} className="text-sm text-gray-500 hover:text-gray-900">← Products</a>
-        <h1 className="text-xl font-semibold text-gray-900">Add product</h1>
+        <a href={`/app/${businessId}/products`} className="text-sm text-ink-500 hover:text-ink-900">← Products</a>
+        <h1 className="text-xl font-semibold text-ink-900">Add product</h1>
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
+      <div className="rounded-lg border border-line bg-surface p-6">
         <form action={handleCreate} className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField label="Product name *" name="name" placeholder="e.g. Men's Shirt" />
@@ -78,10 +78,10 @@ export default async function NewProductPage({
             <FormField label="SKU / Code" name="sku" placeholder="Optional" />
             <FormField label="Barcode" name="barcode" placeholder="Optional" />
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <label className="block text-sm font-medium text-ink-700 mb-1">Category</label>
               <select
                 name="categoryId"
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-600"
               >
                 <option value="">No category</option>
                 {categories.map((c) => (
@@ -99,11 +99,11 @@ export default async function NewProductPage({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <label className="block text-sm font-medium text-ink-700 mb-1">Description</label>
             <textarea
               name="description"
               rows={2}
-              className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-600"
               placeholder="Optional"
             />
           </div>
@@ -111,13 +111,13 @@ export default async function NewProductPage({
           <div className="flex gap-3 pt-2">
             <button
               type="submit"
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
             >
               Save product
             </button>
             <a
               href={`/app/${businessId}/products`}
-              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-md border border-line-strong px-4 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50"
             >
               Cancel
             </a>
@@ -135,14 +135,14 @@ function FormField({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label className="block text-sm font-medium text-ink-700 mb-1">{label}</label>
       <input
         name={name}
         type={type}
         step={step}
         defaultValue={defaultValue}
         placeholder={placeholder}
-        className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+        className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-600"
       />
     </div>
   );

@@ -75,7 +75,8 @@ export default function CreateBusinessForm({ userName }: Props) {
         return;
       }
 
-      router.push(`/app?businessId=${data.businessId}`);
+      // Next step of registration: choose a plan and submit the payment.
+      router.push(`/app/${data.businessId}/settings/subscription`);
     } catch {
       setFormState({
         status: "error",
@@ -88,14 +89,14 @@ export default function CreateBusinessForm({ userName }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-ink-600">
         Welcome, <strong>{userName}</strong>! Tell us about your business.
       </p>
 
       {formState.status === "error" && (
         <div
           role="alert"
-          className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
+          className="rounded-md bg-danger-50 border border-danger-600/25 px-4 py-3 text-sm text-danger-700"
         >
           {formState.message}
         </div>
@@ -104,9 +105,9 @@ export default function CreateBusinessForm({ userName }: Props) {
       <div>
         <label
           htmlFor="businessName"
-          className="block text-sm font-medium text-gray-700 mb-1"
+          className="block text-sm font-medium text-ink-700 mb-1"
         >
-          Business name <span className="text-red-500">*</span>
+          Business name <span className="text-danger-600">*</span>
         </label>
         <input
           id="businessName"
@@ -116,7 +117,7 @@ export default function CreateBusinessForm({ userName }: Props) {
           onChange={(e) => setBusinessName(e.target.value)}
           disabled={loading}
           maxLength={120}
-          className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+          className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm placeholder-gray-400 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-ink-50"
           placeholder="e.g. Selam Fashion Store"
         />
       </div>
@@ -124,9 +125,9 @@ export default function CreateBusinessForm({ userName }: Props) {
       <div>
         <label
           htmlFor="businessType"
-          className="block text-sm font-medium text-gray-700 mb-1"
+          className="block text-sm font-medium text-ink-700 mb-1"
         >
-          Business type <span className="text-red-500">*</span>
+          Business type <span className="text-danger-600">*</span>
         </label>
         <select
           id="businessType"
@@ -134,7 +135,7 @@ export default function CreateBusinessForm({ userName }: Props) {
           value={businessType}
           onChange={(e) => setBusinessType(e.target.value)}
           disabled={loading}
-          className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+          className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-ink-50"
         >
           <option value="">Select type…</option>
           {BUSINESS_TYPES.map((type) => (
@@ -149,7 +150,7 @@ export default function CreateBusinessForm({ userName }: Props) {
         <div>
           <label
             htmlFor="country"
-            className="block text-sm font-medium text-gray-700 mb-1"
+            className="block text-sm font-medium text-ink-700 mb-1"
           >
             Country
           </label>
@@ -160,16 +161,16 @@ export default function CreateBusinessForm({ userName }: Props) {
             onChange={(e) => setCountry(e.target.value.toUpperCase())}
             disabled={loading}
             maxLength={2}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm uppercase focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+            className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm uppercase focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-ink-50"
             placeholder="ET"
           />
-          <p className="mt-1 text-xs text-gray-400">ISO 3166 2-letter code</p>
+          <p className="mt-1 text-xs text-ink-400">ISO 3166 2-letter code</p>
         </div>
 
         <div>
           <label
             htmlFor="currency"
-            className="block text-sm font-medium text-gray-700 mb-1"
+            className="block text-sm font-medium text-ink-700 mb-1"
           >
             Currency
           </label>
@@ -180,20 +181,20 @@ export default function CreateBusinessForm({ userName }: Props) {
             onChange={(e) => setCurrency(e.target.value.toUpperCase())}
             disabled={loading}
             maxLength={3}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm uppercase focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+            className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm uppercase focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-ink-50"
             placeholder="ETB"
           />
-          <p className="mt-1 text-xs text-gray-400">ISO 4217 3-letter code</p>
+          <p className="mt-1 text-xs text-ink-400">ISO 4217 3-letter code</p>
         </div>
       </div>
 
       <div>
         <label
           htmlFor="phone"
-          className="block text-sm font-medium text-gray-700 mb-1"
+          className="block text-sm font-medium text-ink-700 mb-1"
         >
           Phone number{" "}
-          <span className="font-normal text-gray-400">(optional)</span>
+          <span className="font-normal text-ink-400">(optional)</span>
         </label>
         <input
           id="phone"
@@ -202,7 +203,7 @@ export default function CreateBusinessForm({ userName }: Props) {
           onChange={(e) => setPhone(e.target.value)}
           disabled={loading}
           maxLength={30}
-          className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+          className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm placeholder-gray-400 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-ink-50"
           placeholder="+251 91 123 4567"
         />
       </div>
@@ -210,10 +211,10 @@ export default function CreateBusinessForm({ userName }: Props) {
       <div>
         <label
           htmlFor="branchName"
-          className="block text-sm font-medium text-gray-700 mb-1"
+          className="block text-sm font-medium text-ink-700 mb-1"
         >
           First branch name{" "}
-          <span className="font-normal text-gray-400">(your main shop)</span>
+          <span className="font-normal text-ink-400">(your main shop)</span>
         </label>
         <input
           id="branchName"
@@ -222,7 +223,7 @@ export default function CreateBusinessForm({ userName }: Props) {
           onChange={(e) => setBranchName(e.target.value)}
           disabled={loading}
           maxLength={100}
-          className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+          className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm placeholder-gray-400 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-ink-50"
           placeholder="Main Branch"
         />
       </div>
@@ -230,7 +231,7 @@ export default function CreateBusinessForm({ userName }: Props) {
       <button
         type="submit"
         disabled={loading}
-        className="w-full flex justify-center rounded-md bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
+        className="w-full flex justify-center rounded-md bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
       >
         {loading ? "Creating…" : "Create business"}
       </button>

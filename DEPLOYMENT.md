@@ -20,7 +20,7 @@ cp .env.example .env.local
 # 3. Create and seed the database
 # Start PostgreSQL, then:
 npx prisma migrate deploy   # Applies all committed migrations
-npx prisma db seed          # Seeds plans (STARTER, BUSINESS, PRO)
+npx prisma db seed          # Creates the plans (BASIC, PRO, BUSINESS) if missing
 npx prisma generate         # Regenerate Prisma client
 
 # 4. Verify Firebase
@@ -80,22 +80,20 @@ See `.env.example` for all required variables with documentation.
 
 ## SaaS billing
 
-Payment gateway integration is **not yet configured** (UD-003 pending).
+Subscriptions are collected **manually** (Telebirr / bank transfer). There is no payment
+gateway and no webhook: an owner uploads a receipt, a platform administrator verifies the
+transfer and approves or rejects it (see "Manual subscription billing and platform console"
+below). Decision UD-003 is therefore resolved as *manual transfer + admin confirmation*.
 
-The billing domain is fully implemented:
-- Plans, subscriptions, trial periods, usage limits — all in the database
-- `subscription.service.ts` provides entitlement checking
-- The subscription settings page shows plan details and trial status
-
-To activate billing:
-1. Select a payment provider (Chapa for Ethiopia, or Stripe for international)
-2. Add the provider's credentials to environment variables
-3. Implement the webhook handler at `/api/billing/webhook`
-4. Call `updateSubscriptionStatus()` from the webhook after payment verification
+- Plans, subscriptions and payments live in the database; prices and the yearly discount
+  are editable by a super administrator at `/admin/plans`.
+- Feature entitlements and limits are defined in code (`src/shared/plans.ts`).
+- `subscription.service.ts` derives access from stored dates and the server clock:
+  3-day grace after expiry, then read-only. There is no automatic trial.
 
 ## Offline sync
 
-Business data (sales, expenses) is stored in IndexedDB via Dexie.js and synced to PostgreSQL via:
+Business data (sales, expenses, stock changes) is stored in IndexedDB via Dexie.js and synced to PostgreSQL via:
 - `POST /api/[businessId]/sync/batch` — batch sync endpoint
 - `SyncOperation` table — server-side idempotency record
 
@@ -149,3 +147,21 @@ There is no payment gateway and no automatic verification.
 5. **Pricing.** Default ETB prices and a 20 % yearly discount are seeded. Change
    them at `/admin/plans` (super administrator). They are defaults chosen to
    launch with, not a market-tested decision — review them before going live.
+
+## Later additions
+
+- **Migrations** (apply in order with `npx prisma migrate deploy`):
+  `20261018200000_manual_subscription_payments`, `20261018210000_report_access_grants`,
+  `20261022000000_support_tickets`. None drops data. Test them on a scratch database first —
+  they have been syntax-checked but not applied to a real database.
+- **Security headers** are set in `next.config.ts`: `nosniff`, frame denial, referrer and
+  permissions policies, HSTS, and a partial CSP (`frame-ancestors`, `base-uri`, `object-src`,
+  `form-action`). **Remaining hardening:** a `script-src` CSP needs per-request nonces.
+- **Rate limiting** on `POST /api/auth/session` is in-memory and per server instance. On
+  serverless or multi-instance hosting, add an edge/WAF rate limit as well. Payment and
+  support submissions are limited per business in the database (shared across instances).
+- **Support** is handled at `/admin/support` by `SUPPORT` (or `SUPER_ADMIN`) administrators.
+  They see ticket text only. No mechanism exists for platform staff to open a business's
+  sales, expenses or reports, so there is no such access to log; if one is ever added it
+  must be owner-granted, time-limited and written to the platform audit log.
+- **Branches** need no extra deployment steps (branch access rows already existed).

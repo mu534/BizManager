@@ -19,7 +19,8 @@ export interface PlanFeatureLine {
 }
 
 const a = (key: FeatureLineKey): PlanFeatureLine => ({ key, availability: "available" });
-const soon = (key: FeatureLineKey): PlanFeatureLine => ({ key, availability: "soon" });
+/** Mark a feature not yet built — the site then shows "Coming soon" beside it. Currently every advertised feature is built. */
+export const soon = (key: FeatureLineKey): PlanFeatureLine => ({ key, availability: "soon" });
 
 /** Lines are INCREMENTAL: Pro shows only what it adds to Basic, and so on. */
 export const PLAN_FEATURE_LINES: Record<PlanCode, readonly PlanFeatureLine[]> = {
@@ -41,7 +42,7 @@ export const PLAN_FEATURE_LINES: Record<PlanCode, readonly PlanFeatureLine[]> = 
     a("stockReports"),
     a("expenseCategories"),
     a("paymentBreakdown"),
-    soon("exports"),
+    a("exports"),
     a("employees"),
     a("reportGrants"),
   ],

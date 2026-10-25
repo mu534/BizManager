@@ -34,6 +34,7 @@ export default async function AdminOverview() {
         <Stat label="Expiring in 7 days" value={m.expiringWithin7Days} />
         <Stat label="Pending payment reviews" value={m.pendingPaymentReviews} />
         <Stat label="Suspended businesses" value={m.suspendedBusinesses} />
+        <Stat label="Open support requests" value={m.openSupportRequests} />
         <Stat label="Failed sync operations (7 days)" value={m.failedSyncOperations7d} sub="As recorded by the server" />
       </div>
 

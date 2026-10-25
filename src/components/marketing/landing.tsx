@@ -40,7 +40,7 @@ function Logo() {
 function Check({ tone }: { tone: "brand" | "muted" | "warn" }) {
   const c = tone === "brand" ? "text-brand-600" : tone === "warn" ? "text-warning-600" : "text-ink-400";
   return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" width="16" height="16" className={`mt-0.5 size-4 shrink-0 ${c}`} fill="currentColor">
+    <svg aria-hidden="true" viewBox="0 0 20 20" className={`mt-0.5 size-4 shrink-0 ${c}`} fill="currentColor">
       <path fillRule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.5 7.5a1 1 0 0 1-1.4 0L3.3 9.7a1 1 0 1 1 1.4-1.4l3.8 3.8 6.8-6.8a1 1 0 0 1 1.4 0Z" clipRule="evenodd" />
     </svg>
   );
@@ -105,7 +105,7 @@ export function Landing({ locale }: { locale: Locale }) {
                 <Link href={signUp} className={primaryBtn}>{t.hero.primaryCta}</Link>
                 <a href="#pricing" className={secondaryBtn}>{t.hero.secondaryCta}</a>
               </div>
-              <p className="mt-5 flex max-w-xl items-start gap-2 text-sm text-ink-500"><Check tone="brand" /><span>{t.hero.note}</span></p>
+              <p className="mt-5 flex max-w-xl items-start gap-2 text-sm text-ink-500"><Check tone="brand" />{t.hero.note}</p>
             </div>
             <div className="mx-auto w-full max-w-md"><ProductPreview t={t.preview} compact /></div>
           </div>
@@ -241,7 +241,7 @@ export function Landing({ locale }: { locale: Locale }) {
           <div className="mx-auto max-w-2xl px-4">
             <h2 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">{t.cta.title}</h2>
             <p className="mt-3 text-brand-100">{t.cta.subtitle}</p>
-            <Link href={signUp} className="mt-7 inline-flex h-12 items-center rounded-control bg-white px-6 text-base font-medium text-brand-800 transition hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+            <Link href={signUp} className="mt-7 inline-flex h-12 items-center rounded-control bg-surface px-6 text-base font-medium text-brand-800 transition hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
               {t.cta.button}
             </Link>
           </div>

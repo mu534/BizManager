@@ -15,6 +15,7 @@ import { getBusinessTime } from "@server/services/business-time";
 import { getBranchIds, type PeriodInfo } from "@server/services/report.service";
 import { REVENUE_SALE_STATUSES } from "@shared/profit";
 import { resolvePeriod } from "@shared/time";
+import { csvCell, minorToDecimal } from "@shared/csv";
 import {
   computeProductPerformance,
   type ProductPerformance,
@@ -121,20 +122,7 @@ export async function getProductPerformanceReport(
 
 // ─── CSV export ───────────────────────────────────────────────────────────
 
-/** Neutralise spreadsheet formula injection and quote per RFC 4180. */
-export function csvCell(value: string | number | null): string {
-  if (value === null) return "";
-  let s = String(value);
-  if (typeof value === "string" && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-/** Major-unit decimal string from minor units, without floating point. */
-export function minorToDecimal(minor: number): string {
-  const sign = minor < 0 ? "-" : "";
-  const abs = Math.abs(minor);
-  return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
-}
+export { csvCell, minorToDecimal } from "@shared/csv";
 
 export function productReportToCsv(report: ProductPerformanceReport, currency: string): string {
   const header = ["Product", "SKU", "Units sold (net)", `Revenue (${currency})`, `Cost of goods sold (${currency})`, `Gross profit (${currency})`, "Margin %", "Share of profit %"];

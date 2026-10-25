@@ -19,8 +19,21 @@ import { upsertUserFromFirebase } from "@server/services/user.service";
 import { getBusinessesForUser } from "@server/services/business.service";
 import { createSessionSchema } from "@shared/validation/auth.schema";
 import { isAppError } from "@shared/errors";
+import { clientKey, createRateLimiter } from "@shared/rate-limit";
+
+// Best-effort, per instance: limits bursts of sign-in exchanges from one address.
+// Real credential attacks are stopped upstream — a valid Firebase ID token is required.
+const limiter = createRateLimiter({ limit: 30, windowMs: 60_000 });
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const gate = limiter.check(clientKey(request.headers), performance.timeOrigin + performance.now());
+  if (!gate.allowed) {
+    return NextResponse.json(
+      { error: { code: "RATE_LIMITED", message: "Too many attempts. Please wait a moment and try again." } },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(gate.retryAfterMs / 1000)), "Cache-Control": "no-store" } },
+    );
+  }
+
   try {
     // 1. Parse and validate the request body.
     const body: unknown = await request.json().catch(() => ({}));

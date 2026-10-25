@@ -1,130 +1,104 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { resolveContext } from "@server/auth/resolve-context";
-import { getExpensesReport } from "@server/services/report.service";
+import { listExpenses, listExpenseCategories } from "@server/services/expense.service";
 import { prisma } from "@server/db/prisma";
 import { Money } from "@shared/money";
-import { reportFilterSchema } from "@shared/validation/report.schema";
-import { ReportNav } from "@components/reports/report-nav";
-import Link from "next/link";
-import { Alert } from "@components/ui/primitives";
-import { isAppError } from "@shared/errors";
-import { RangeFilter } from "@components/reports/range-filter";
-import { canViewFinancialReports } from "@server/auth/permissions";
-import { AccessDenied } from "@components/layout/states";
-import { resolveReportBranch } from "@server/branch/report-branch";
 
-export const metadata: Metadata = { title: "Expenses Report" };
+export const metadata: Metadata = { title: "Expenses" };
 
 
 // Reads session + business-scoped DB data on every request — cannot prerender.
 export const instant = false;
 
-export default async function ExpensesReportPage({
+export default async function ExpensesPage({
   params,
   searchParams,
 }: {
   params: Promise<{ businessId: string }>;
-  searchParams: Promise<{ branch?: string; range?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; categoryId?: string; page?: string }>;
 }) {
   const { businessId } = await params;
   const sp = await searchParams;
   const ctx = await resolveContext(businessId).catch(() => null);
   if (!ctx) redirect("/sign-in");
-  if (!canViewFinancialReports(ctx)) return <AccessDenied businessId={businessId} what="financial reports" />;
 
   const business = await prisma.business.findUnique({ where: { id: businessId }, select: { currency: true } });
   const currency = business?.currency ?? "ETB";
-  const fmt = (n: number) => Money.format(n, currency);
 
-  const rb = await resolveReportBranch(ctx, sp.branch);
-  const filters = reportFilterSchema.parse({ range: sp.range ?? "month", from: sp.from, to: sp.to, branchId: rb.selectedId });
-  let report: Awaited<ReturnType<typeof getExpensesReport>>;
-  try {
-    report = await getExpensesReport(ctx, filters);
-  } catch (err) {
-    if (isAppError(err) && err.code === "SUBSCRIPTION_LIMIT") {
-      return (
-        <div className="space-y-6">
-          <ReportNav businessId={businessId} active="expenses" showBranches={rb.branches.length > 1} />
-          <Alert tone="warning" title="Expense analysis is part of the Pro plan">
-            {err.message}{" "}
-            <Link href={`/app/${businessId}/settings/subscription`} className="font-semibold underline">View plans</Link>
-          </Alert>
-        </div>
-      );
-    }
-    throw err;
-  }
+  const today = new Date().toISOString().slice(0, 10);
+  const from = sp.from ?? new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const to = sp.to ?? today;
+
+  const [categories, result] = await Promise.all([
+    listExpenseCategories(ctx),
+    listExpenses(ctx, {
+      categoryId: sp.categoryId,
+      from: `${from}T00:00:00Z`,
+      to: `${to}T23:59:59Z`,
+      page: sp.page ? parseInt(sp.page) : 1,
+      limit: 30,
+    }),
+  ]);
+
+  const fmt = (n: number) => Money.format(n, currency);
+  const total = result.expenses.reduce((s, e) => s + e.amount, 0);
 
   return (
-    <div className="space-y-6">
-      <ReportNav businessId={businessId} active="expenses" showBranches={rb.branches.length > 1} />
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Expenses Report</h1>
-        <RangeFilter branches={rb.branches} branchId={rb.selectedId} range={filters.range} from={sp.from} to={sp.to} />
+        <h1 className="text-xl font-semibold text-ink-900">Expenses</h1>
+        <Link href={`/app/${businessId}/expenses/new`}
+          className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+          Record expense
+        </Link>
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-        <p className="text-xs text-gray-500">Total Expenses</p>
-        <p className="mt-1 text-2xl font-bold text-gray-900">{fmt(report.total)}</p>
-      </div>
+      <form method="GET" className="flex flex-wrap gap-3">
+        <input name="from" type="date" defaultValue={from}
+          className="rounded-md border border-line-strong px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-600" />
+        <input name="to" type="date" defaultValue={to}
+          className="rounded-md border border-line-strong px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-600" />
+        <select name="categoryId" defaultValue={sp.categoryId ?? ""}
+          className="rounded-md border border-line-strong px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-600">
+          <option value="">All categories</option>
+          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <button type="submit" className="rounded-md bg-ink-100 px-3 py-1.5 text-sm font-medium text-ink-700 hover:bg-ink-200">
+          Filter
+        </button>
+      </form>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {/* By category */}
-        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-700">By Category</div>
-          {report.byCategory.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-gray-400">No expenses.</p>
-          ) : (
-            <table className="min-w-full text-sm">
-              <tbody className="divide-y divide-gray-100">
-                {report.byCategory
-                  .sort((a, b) => b.total - a.total)
-                  .map((c, i) => (
-                    <tr key={i} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 text-gray-900">{c.categoryName}</td>
-                      <td className="px-4 py-2.5 text-right font-medium text-gray-900">{fmt(c.total)}</td>
-                      <td className="px-4 py-2.5 text-right text-xs text-gray-400">
-                        {report.total > 0 ? `${Math.round((c.total / report.total) * 100)}%` : "—"}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          )}
+      {result.expenses.length === 0 ? (
+        <div className="rounded-lg border border-line bg-surface px-6 py-10 text-center">
+          <p className="text-sm text-ink-500">No expenses for this period.</p>
         </div>
-
-        {/* By account */}
-        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-700">By Account</div>
-          {report.byAccount.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-gray-400">No data.</p>
-          ) : (
-            <table className="min-w-full text-sm">
-              <tbody className="divide-y divide-gray-100">
-                {report.byAccount.map((a, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-4 py-2.5 text-gray-900">{a.accountName}</td>
-                    <td className="px-4 py-2.5 text-right font-medium text-gray-900">{fmt(a.total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-
-      {/* Daily trend */}
-      {report.daily.length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-700">Daily Trend</div>
+      ) : (
+        <div className="rounded-lg border border-line bg-surface overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-line text-sm font-medium text-ink-700">
+            Total: {fmt(total)}
+          </div>
           <table className="min-w-full text-sm">
-            <tbody className="divide-y divide-gray-100">
-              {report.daily.map((d) => (
-                <tr key={d.date} className="hover:bg-gray-50">
-                  <td className="px-4 py-2.5 text-gray-600">{d.date}</td>
-                  <td className="px-4 py-2.5 text-right font-medium text-gray-900">{fmt(d.total)}</td>
+            <thead className="bg-ink-50 border-b border-line">
+              <tr>
+                <th className="px-4 py-2.5 text-left font-medium text-ink-600">Date</th>
+                <th className="px-4 py-2.5 text-left font-medium text-ink-600">Category</th>
+                <th className="px-4 py-2.5 text-left font-medium text-ink-600 hidden sm:table-cell">Description</th>
+                <th className="px-4 py-2.5 text-left font-medium text-ink-600 hidden md:table-cell">Account</th>
+                <th className="px-4 py-2.5 text-right font-medium text-ink-600">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {result.expenses.map((e) => (
+                <tr key={e.id} className="hover:bg-ink-50">
+                  <td className="px-4 py-2.5 text-ink-600 whitespace-nowrap">
+                    {new Date(e.expenseDate).toLocaleDateString()}
+                  </td>
+                  <td className="px-4 py-2.5 text-ink-900">{e.category.name}</td>
+                  <td className="px-4 py-2.5 text-ink-500 hidden sm:table-cell">{e.description ?? "—"}</td>
+                  <td className="px-4 py-2.5 text-ink-500 hidden md:table-cell">{e.account.name}</td>
+                  <td className="px-4 py-2.5 text-right font-medium text-ink-900">{fmt(e.amount)}</td>
                 </tr>
               ))}
             </tbody>
@@ -134,4 +108,3 @@ export default async function ExpensesReportPage({
     </div>
   );
 }
-

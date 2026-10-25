@@ -52,7 +52,7 @@ export function BottomNav({ businessId }: BottomNavProps) {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-200 md:hidden"
+      className="fixed bottom-0 left-0 right-0 z-30 bg-surface border-t border-line md:hidden"
       aria-label="Mobile navigation"
     >
       <div className="grid grid-cols-4">
@@ -65,11 +65,11 @@ export function BottomNav({ businessId }: BottomNavProps) {
               key={segment}
               href={href}
               className={`flex flex-col items-center gap-0.5 py-2 px-1 min-h-[56px] justify-center text-xs font-medium transition-colors ${
-                active ? "text-blue-600" : "text-gray-500 hover:text-gray-900"
+                active ? "text-brand-700" : "text-ink-500 hover:text-ink-900"
               }`}
               aria-current={active ? "page" : undefined}
             >
-              <span className={active ? "text-blue-600" : "text-gray-400"}>
+              <span className={active ? "text-brand-700" : "text-ink-400"}>
                 {icon}
               </span>
               {label}

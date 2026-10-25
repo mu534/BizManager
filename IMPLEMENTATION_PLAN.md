@@ -1642,6 +1642,10 @@ getSubscription(ctx: TenantContext): Promise<Subscription>
 
 ### 11.2 — Trial subscription
 
+> **Superseded (October 2026):** no automatic trial exists. Access follows an approved manual
+> payment (see ARCHITECTURE.md §22). Legacy `TRIAL` subscriptions, if any, are honoured until
+> their end date and then follow the normal grace and read-only rules.
+
 **Type:** server | **Risk:** low
 
 Implemented in Phase 3 (`createBusiness` creates a TRIAL subscription). In Phase 11:
