@@ -102,7 +102,17 @@ function makeFakeTx(opts: {
     },
     customerDebtRepayment: {
       findUnique: vi.fn(async () => opts.repaymentFindResult ?? null),
-      create: vi.fn(async () => opts.repaymentCreated ?? makeRepayment({ verificationStatus: "VERIFIED" })),
+      // Mirror input data so verifiedSum computed from stored rows reflects actual input.
+      create: vi.fn(async (args: { data: Partial<CustomerDebtRepayment> }) =>
+        opts.repaymentCreated ??
+        makeRepayment({
+          amountMinor: args.data.amountMinor ?? 5000,
+          verificationStatus:
+            (args.data.verificationStatus as CustomerDebtRepayment["verificationStatus"]) ??
+            "VERIFIED",
+          operationId: args.data.operationId ?? "op-repay-1",
+        }),
+      ),
       update: vi.fn(async (args: { data: { verificationStatus: string } }) =>
         makeRepayment({ verificationStatus: args.data.verificationStatus as "VERIFIED" | "PENDING_VERIFICATION" | "FAILED" }),
       ),
@@ -420,6 +430,8 @@ describe("verifyRepayment", () => {
     const alreadyVerified = makeRepayment({ verificationStatus: "VERIFIED" });
     const fakeTx = {
       customerDebtRepayment: {
+        // First call (pre-lock read): returns the repayment so we can get debtId
+        // Second call (post-lock re-read): also returns the repayment — status check fires
         findUnique: vi.fn(async () => alreadyVerified),
         update: vi.fn(),
       },
@@ -445,6 +457,7 @@ describe("verifyRepayment", () => {
     const debt = makeDebt({ outstandingMinor: 5000 });
     const fakeTx = {
       customerDebtRepayment: {
+        // Called twice: pre-lock read and post-lock re-read
         findUnique: vi.fn(async () => repayment),
         update: vi.fn(async () => makeRepayment({ verificationStatus: "VERIFIED" })),
       },
@@ -473,6 +486,7 @@ describe("verifyRepayment", () => {
     const repayment = makeRepayment({ verificationStatus: "PENDING_VERIFICATION" });
     const fakeTx = {
       customerDebtRepayment: {
+        // Called twice: pre-lock read and post-lock re-read
         findUnique: vi.fn(async () => repayment),
         update: vi.fn(async () => makeRepayment({ verificationStatus: "FAILED" })),
       },
@@ -501,6 +515,7 @@ describe("verifyRepayment", () => {
     const debt = makeDebt({ outstandingMinor: 5000 });
     const fakeTx = {
       customerDebtRepayment: {
+        // Called twice: pre-lock read and post-lock re-read
         findUnique: vi.fn(async () => repayment),
         update: vi.fn(async () => makeRepayment({ verificationStatus: "VERIFIED" })),
       },

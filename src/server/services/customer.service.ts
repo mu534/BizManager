@@ -130,9 +130,12 @@ export async function recordRepayment(
       repayments.push(repayment);
     }
 
-    const verifiedSum = input.payments
-      .filter((p) => p.verificationStatus === "VERIFIED")
-      .reduce((s, p) => s + p.amountMinor, 0);
+    // Compute verifiedSum from the STORED repayment rows (canonical amounts),
+    // not from input.payments. This prevents a retry with a mutated amountMinor
+    // from re-applying the wrong delta to outstandingMinor.
+    const verifiedSum = repayments
+      .filter((r) => r.verificationStatus === "VERIFIED")
+      .reduce((s, r) => s + r.amountMinor, 0);
 
     let overpaymentCredit: CustomerCredit | null = null;
     let newOutstanding: number;
@@ -180,6 +183,21 @@ export async function verifyRepayment(
   newStatus: "VERIFIED" | "FAILED",
 ): Promise<CustomerDebtRepayment> {
   return prisma.$transaction(async (tx) => {
+    // Pre-lock read: only to discover which debt to lock on.
+    // The authoritative businessId/status checks happen AFTER the lock.
+    const preRead = await tx.customerDebtRepayment.findUnique({
+      where: { id: repaymentId },
+    });
+    if (!preRead || preRead.businessId !== ctx.businessId) {
+      throw appError.notFound("Repayment not found");
+    }
+
+    // Acquire the debt-scoped advisory lock BEFORE re-reading the repayment.
+    // This eliminates the TOCTOU window where two concurrent calls both see
+    // PENDING_VERIFICATION before either has taken the lock.
+    await lockKey(tx, `debt:${preRead.debtId}`);
+
+    // Re-read repayment under the lock — now the status check is race-safe.
     const repayment = await tx.customerDebtRepayment.findUnique({
       where: { id: repaymentId },
     });
@@ -190,11 +208,9 @@ export async function verifyRepayment(
       throw appError.validationError("Repayment is not pending verification");
     }
 
-    await lockKey(tx, `debt:${repayment.debtId}`);
-
     if (newStatus === "VERIFIED") {
       const debt = await tx.customerDebt.findUnique({ where: { id: repayment.debtId } });
-      if (!debt) throw appError.notFound("Debt not found");
+      if (!debt || debt.businessId !== ctx.businessId) throw appError.notFound("Debt not found");
 
       let newOutstanding: number;
       if (repayment.amountMinor <= debt.outstandingMinor) {
