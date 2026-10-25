@@ -2,9 +2,9 @@ import { z } from "zod";
 import { BILLING_PERIODS, PLAN_CODES } from "@shared/plans";
 
 export const submitPaymentSchema = z.object({
-  planCode: z.enum(PLAN_CODES, { message: "Choose a plan." }),
-  billingPeriod: z.enum(BILLING_PERIODS, { message: "Choose monthly or yearly billing." }),
-  method: z.enum(["TELEBIRR", "BANK_TRANSFER"], { message: "Choose how you paid." }),
+  planCode: z.enum(PLAN_CODES),
+  billingPeriod: z.enum(BILLING_PERIODS),
+  method: z.enum(["TELEBIRR", "BANK_TRANSFER"]),
   reference: z
     .string()
     .trim()

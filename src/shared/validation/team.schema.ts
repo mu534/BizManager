@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const addMemberSchema = z.object({
   email: z.string().trim().toLowerCase().email("Enter a valid email address.").max(254),
-  role: z.enum(["MANAGER", "STAFF"], { message: "Choose a role." }),
+  role: z.enum(["MANAGER", "STAFF"]),
 });
 export type AddMemberInput = z.infer<typeof addMemberSchema>;
 

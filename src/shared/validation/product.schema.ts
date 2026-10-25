@@ -70,7 +70,7 @@ export const createProductSchema = z.object({
     .default(0),
 
   status: z
-    .enum(["ACTIVE", "ARCHIVED"], { error: "Invalid status" })
+    .enum(["ACTIVE", "ARCHIVED"])
     .optional()
     .default("ACTIVE"),
 });
@@ -78,7 +78,7 @@ export const createProductSchema = z.object({
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 
 export const updateProductSchema = createProductSchema.partial().omit({ status: true }).extend({
-  status: z.enum(["ACTIVE", "ARCHIVED"], { error: "Invalid status" }).optional(),
+  status: z.enum(["ACTIVE", "ARCHIVED"]).optional(),
 });
 
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
@@ -87,7 +87,7 @@ export const productSearchSchema = z.object({
   query: z.string().optional(),
   categoryId: z.string().uuid().optional().transform((v) => (v === "" ? undefined : v)),
   status: z
-    .enum(["ACTIVE", "ARCHIVED"], { error: "Invalid status" })
+    .enum(["ACTIVE", "ARCHIVED"])
     .optional(),
   page: z
     .string()

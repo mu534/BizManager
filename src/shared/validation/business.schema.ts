@@ -26,9 +26,7 @@ export const createBusinessSchema = z.object({
     .min(2, "Business name must be at least 2 characters")
     .max(120, "Business name is too long"),
 
-  businessType: z.enum(BUSINESS_TYPES, {
-    error: "Select a business type",
-  }),
+  businessType: z.enum(BUSINESS_TYPES),
 
   country: z
     .string()

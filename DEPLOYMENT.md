@@ -20,7 +20,7 @@ cp .env.example .env.local
 # 3. Create and seed the database
 # Start PostgreSQL, then:
 npx prisma migrate deploy   # Applies all committed migrations
-npx prisma db seed          # Creates the plans (BASIC, PRO, BUSINESS) if missing
+npx tsx prisma/seed-plans.ts # Creates the plans (BASIC, PRO, BUSINESS) if missing (run once after Phase 11 migration)
 npx prisma generate         # Regenerate Prisma client
 
 # 4. Verify Firebase
@@ -104,6 +104,15 @@ Create proper PNG icons and place them in `public/icons/`:
 - `icon-512.png` (512×512)  
 - `icon-maskable-192.png` (192×192, with safe zone for maskable)
 
+## Service worker / PWA
+
+- `public/sw.js` is served as a static file and registered on the client.
+- **HTTPS is required in production** for service worker registration. Browsers
+  refuse to register a service worker on insecure origins (localhost is the
+  only exception). Ensure HTTPS is enforced at the load balancer/edge.
+- The service worker enables offline data entry (IndexedDB) and background sync.
+  See the "Offline sync" section above.
+
 The current `icon.svg` can be used to generate PNG icons via:
 ```bash
 npx sharp-cli -i public/icons/icon.svg -o public/icons/icon-192.png resize 192 192
@@ -128,7 +137,7 @@ BizManager collects subscription payments **manually** (Telebirr / bank transfer
 There is no payment gateway and no automatic verification.
 
 1. **Apply the migration** `20261018200000_manual_subscription_payments`
-   (`npx prisma migrate deploy`), then run `npx prisma db seed` to create the
+   (`npx prisma migrate deploy`), then run `npx tsx prisma/seed-plans.ts` to create the
    BASIC / PRO / BUSINESS plan rows. The migration renames the previous
    STARTER / BUSINESS / PRO plans in place (old BUSINESS → PRO, old PRO →
    BUSINESS, STARTER → BASIC) so existing subscriptions keep their plan link.

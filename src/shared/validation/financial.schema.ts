@@ -13,9 +13,7 @@ const moneyStr = z
 
 export const createAccountSchema = z.object({
   name: z.string().min(1, "Name is required").max(100, "Name too long"),
-  type: z.enum(["CASH", "MOBILE_MONEY", "BANK", "OTHER"], {
-    error: "Invalid account type",
-  }),
+  type: z.enum(["CASH", "MOBILE_MONEY", "BANK", "OTHER"]),
   isDefault: z.boolean().optional().default(false),
   /** Opening balance as decimal string */
   openingBalance: z

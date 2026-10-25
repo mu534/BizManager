@@ -37,7 +37,7 @@ const moneyDecimalString = z
 export const recordMovementSchema = z.object({
   productId: z.string().uuid("Invalid product"),
   branchId: z.string().uuid("Invalid branch"),
-  type: z.enum(MOVEMENT_TYPES, { error: "Invalid movement type" }),
+  type: z.enum(MOVEMENT_TYPES),
   /** Positive integer for the quantity amount; the service applies the sign. */
   quantity: z.number().int("Must be a whole number").positive("Quantity must be positive"),
   /** Decimal string for unit cost — optional for non-purchase movements. */

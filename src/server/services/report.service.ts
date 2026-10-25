@@ -264,6 +264,10 @@ export async function getSalesReport(
 /**
  * Operating profit estimate: Net sales − COGS − Expenses (rules in profit.ts).
  * Not an accounting statement; no tax, depreciation or non-operating items.
+ *
+ * // INVARIANT: Profit report sums Sale.finalTotal only (NOT FinancialTransaction).
+ * // Account transfers (TRANSFER_IN/OUT) are excluded from revenue.
+ * // FinancialTransaction entries for SALE_PAYMENT are not summed here — they would double-count revenue.
  */
 export async function getProfitReport(
   ctx: TenantContext,
@@ -405,6 +409,8 @@ export async function getInventoryReport(
   };
 }
 
+// INVARIANT: Expense report queries Expense table directly (NOT FinancialTransaction) to prevent double-counting.
+// FinancialTransaction includes TRANSFER_IN/OUT entries that are not expenses.
 export async function getExpensesReport(
   ctx: TenantContext,
   filters: ReportFilterInput,

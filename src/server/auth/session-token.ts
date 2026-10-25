@@ -12,6 +12,7 @@
  * performance.now() at the call site (a timing API that doesn't trip the
  * Next.js blocking-prerender-current-time insight).
  */
+import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
