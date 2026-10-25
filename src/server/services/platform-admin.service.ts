@@ -1,4 +1,13 @@
-
+/**
+ * Platform administration — SERVER ONLY.
+ *
+ * Platform administrators are BizManager operators. Their grant lives in the
+ * `platform_admins` table and is completely separate from business roles
+ * (OWNER / MANAGER / STAFF). Holding it gives NO access to any tenant's
+ * sales, expenses or financial reports — only the subscription, payment and
+ * business-status operations exposed here. Any exception must be explicit and
+ * is written to the audit log.
+ */
 import "server-only";
 import { Prisma } from "@prisma/client";
 import type { PlatformAdminRole, BusinessStatus } from "@prisma/client";
@@ -80,6 +89,8 @@ export interface PlatformMetrics {
   expiringWithin7Days: number;
   /** Sync operations the server recorded as failed in the last 7 days. */
   failedSyncOperations7d: number;
+  /** Open support tickets waiting for a response. */
+  openSupportRequests: number;
   generatedAt: Date;
 }
 
@@ -88,7 +99,7 @@ export async function getPlatformMetrics(now: Date = new Date()): Promise<Platfo
   const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const [businesses, subs, pending, oldest, failedSync] = await Promise.all([
+  const [businesses, subs, pending, oldest, failedSync, openTickets] = await Promise.all([
     prisma.business.findMany({ select: { id: true, status: true } }),
     prisma.subscription.findMany({
       select: {
@@ -106,6 +117,7 @@ export async function getPlatformMetrics(now: Date = new Date()): Promise<Platfo
       select: { createdAt: true },
     }),
     prisma.syncOperation.count({ where: { status: "FAILED", createdAt: { gte: weekAgo } } }),
+    prisma.supportTicket.count({ where: { status: { in: ["OPEN", "IN_PROGRESS"] } } }),
   ]);
 
   const statusById = new Map(businesses.map((b) => [b.id, b.status] as const));
@@ -141,6 +153,7 @@ export async function getPlatformMetrics(now: Date = new Date()): Promise<Platfo
     planDistribution: [...plans.entries()].map(([plan, count]) => ({ plan, count })),
     expiringWithin7Days: expiring,
     failedSyncOperations7d: failedSync,
+    openSupportRequests: openTickets,
     generatedAt: now,
   };
 }

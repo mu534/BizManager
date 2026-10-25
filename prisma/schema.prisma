@@ -183,6 +183,10 @@ model User {
   /// Platform-operator grant, if any. Separate from business roles.
   platformAdmin PlatformAdmin?
 
+  /// Support tickets this user opened, and messages they wrote.
+  supportTickets        SupportTicket[]        @relation("TicketCreator")
+  supportTicketMessages SupportTicketMessage[] @relation("TicketMessageAuthor")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -229,6 +233,9 @@ model Business {
 
   /// Manual subscription payments submitted for this business.
   subscriptionPayments SubscriptionPayment[]
+
+  /// Support tickets raised by this business.
+  supportTickets SupportTicket[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1180,7 +1187,67 @@ model PlatformAuditLog {
   @@map("platform_audit_logs")
 }
 
+
+// =============================================================
+// SUPPORT TICKETS
+// =============================================================
+// Customers raise tickets from inside the app; platform support staff reply and
+// change status in the console. Ticket text is whatever the customer chooses to
+// write — platform staff gain no access to the business's financial data.
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum SupportMessageAuthor {
+  CUSTOMER
+  SUPPORT
+}
+
+model SupportTicket {
+  id          String              @id @default(uuid())
+  businessId  String
+  createdById String
+  subject     String
+  status      SupportTicketStatus @default(OPEN)
+  resolvedAt  DateTime?
+
+  business  Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  createdBy User     @relation("TicketCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  messages  SupportTicketMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([businessId, createdAt])
+  @@index([status, updatedAt])
+  @@map("support_tickets")
+}
+
+model SupportTicketMessage {
+  id         String               @id @default(uuid())
+  ticketId   String
+  authorId   String
+  authorKind SupportMessageAuthor
+  body       String
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User          @relation("TicketMessageAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
+  @@map("support_ticket_messages")
+}
+
 // =============================================================
 // NOTE: SaaS Billing models were intentionally excluded from
 // Phase 2. They were added in Phase 11 via migration.
+// =============================================================
+
+// =============================================================
+// Support Tickets (added alongside support feature)
 // =============================================================

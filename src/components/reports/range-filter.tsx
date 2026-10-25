@@ -1,9 +1,13 @@
 "use client";
 
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useState } from "react";
-
 type RangeOption = "today" | "7days" | "month" | "custom";
+
+const RANGES = [
+  { key: "today", label: "Today" },
+  { key: "7days", label: "7 days" },
+  { key: "month", label: "This month" },
+  { key: "custom", label: "Custom" },
+] as const;
 
 interface RangeFilterProps {
   range: RangeOption;
@@ -11,110 +15,86 @@ interface RangeFilterProps {
   to?: string;
   /** Extra search-param key/value pairs to preserve when changing range (e.g. sort). */
   keep?: Record<string, string>;
+  /** Branch list for reports that support branch filtering. Only shown when > 1 branch. */
+  branches?: { id: string; name: string; closed: boolean }[];
+  /** Currently selected branch id. */
+  branchId?: string;
 }
 
-const OPTIONS: { value: RangeOption; label: string }[] = [
-  { value: "today", label: "Today" },
-  { value: "7days", label: "Last 7 days" },
-  { value: "month", label: "This month" },
-  { value: "custom", label: "Custom" },
-];
-
-export function RangeFilter({ range, from, to, keep }: RangeFilterProps) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-
-  const [customFrom, setCustomFrom] = useState(from ?? "");
-  const [customTo, setCustomTo] = useState(to ?? "");
-
-  const buildUrl = useCallback(
-    (newRange: RangeOption, newFrom?: string, newTo?: string) => {
-      const params = new URLSearchParams();
-      // Carry over any extra params (e.g. sort) before overwriting range
-      if (keep) {
-        for (const [k, v] of Object.entries(keep)) {
-          if (v !== undefined && v !== "") params.set(k, v);
-        }
-      }
-      params.set("range", newRange);
-      if (newRange === "custom" && newFrom && newTo) {
-        params.set("from", newFrom);
-        params.set("to", newTo);
-      }
-      return `${pathname}?${params.toString()}`;
-    },
-    [pathname, keep],
-  );
-
-  function handleRangeChange(value: RangeOption) {
-    if (value !== "custom") {
-      router.push(buildUrl(value));
-    }
-    // For custom we wait for the user to pick dates
-  }
-
-  function handleCustomApply() {
-    if (customFrom && customTo) {
-      router.push(buildUrl("custom", customFrom, customTo));
-    }
-  }
-
+export function RangeFilter({ range, from, to, keep, branches, branchId }: RangeFilterProps) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {/* Preset buttons */}
-      <div
-        role="group"
-        aria-label="Date range"
-        className="flex overflow-hidden rounded-lg border border-gray-200 bg-white"
-      >
-        {OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            type="button"
-            aria-pressed={range === opt.value}
-            onClick={() => handleRangeChange(opt.value)}
-            className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-              range === opt.value
-                ? "bg-gray-900 text-white"
-                : "text-gray-600 hover:bg-gray-50"
-            }`}
+    <form method="GET" className="flex flex-wrap items-center gap-2">
+      {Object.entries(keep ?? {}).map(([k, v]) => (
+        <input key={k} type="hidden" name={k} value={v} />
+      ))}
+      {RANGES.map((r) => (
+        <button
+          key={r.key}
+          name="range"
+          value={r.key}
+          type="submit"
+          aria-pressed={range === r.key}
+          className={`rounded-control px-3 py-1.5 text-[13px] font-medium transition ${
+            range === r.key
+              ? "bg-ink-900 text-white"
+              : "border border-line-strong bg-surface text-ink-700 hover:bg-ink-50"
+          }`}
+        >
+          {r.label}
+        </button>
+      ))}
+      {branches && branches.length > 1 && (
+        <span className="flex items-center gap-1.5">
+          <label className="sr-only" htmlFor="rf-branch">Branch</label>
+          <select
+            id="rf-branch"
+            name="branch"
+            defaultValue={branchId ?? ""}
+            className="h-8 rounded-control border border-line-strong bg-surface px-2 text-[13px]"
           >
-            {opt.label}
+            <option value="">All branches</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}{b.closed ? " (closed)" : ""}
+              </option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            name="range"
+            value={range}
+            className="h-8 rounded-control border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink-700 hover:bg-ink-50"
+          >
+            Show
           </button>
-        ))}
-      </div>
-
-      {/* Custom date inputs — visible when custom is selected */}
+        </span>
+      )}
       {range === "custom" && (
-        <div className="flex items-center gap-2">
+        <>
+          <label className="sr-only" htmlFor="rf-from">From</label>
           <input
+            id="rf-from"
+            name="from"
             type="date"
-            aria-label="From date"
-            value={customFrom}
-            max={customTo || undefined}
-            onChange={(e) => setCustomFrom(e.target.value)}
-            className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400"
+            defaultValue={from}
+            className="h-8 rounded-control border border-line-strong px-2 text-[13px]"
           />
-          <span className="text-sm text-gray-400">–</span>
+          <label className="sr-only" htmlFor="rf-to">To</label>
           <input
+            id="rf-to"
+            name="to"
             type="date"
-            aria-label="To date"
-            value={customTo}
-            min={customFrom || undefined}
-            onChange={(e) => setCustomTo(e.target.value)}
-            className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400"
+            defaultValue={to}
+            className="h-8 rounded-control border border-line-strong px-2 text-[13px]"
           />
           <button
-            type="button"
-            disabled={!customFrom || !customTo}
-            onClick={handleCustomApply}
-            className="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40 hover:bg-gray-700 transition-colors"
+            type="submit"
+            className="h-8 rounded-control bg-brand-600 px-3 text-[13px] font-medium text-white hover:bg-brand-700"
           >
             Apply
           </button>
-        </div>
+        </>
       )}
-    </div>
+    </form>
   );
 }

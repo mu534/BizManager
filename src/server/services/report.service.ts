@@ -1,7 +1,21 @@
-
+/**
+ * Report service — SERVER ONLY.
+ *
+ * ONE definition of period financials (see src/shared/profit.ts) is used by
+ * every report and the dashboard, so figures always agree. Previously the
+ * sales report counted only COMPLETED sales, the profit report counted
+ * COMPLETED + PARTIALLY_RETURNED, fully-returned sales vanished from revenue
+ * while their refunds were still subtracted, daily buckets were per-timestamp
+ * and "today" was a UTC day.
+ *
+ * Distinctions preserved: revenue ≠ cash balance; transfers are never revenue
+ * or expense; inventory purchases are never expenses; inventory value ≠ profit.
+ * Every report is financial data and requires OWNER/MANAGER.
+ */
 import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@server/db/prisma";
+import { listAccessibleBranches, requireBranchAccess } from "@server/services/branch-access.service";
 import { requireFeature, FEATURE_KEYS } from "@server/services/subscription.service";
 import { appError } from "@shared/errors";
 import { requireFinancialReports } from "@server/auth/permissions";
@@ -16,9 +30,12 @@ import {
 import {
   businessDayKey,
   enumerateDays,
+  previousPeriod,
   resolvePeriod,
   type ResolvedPeriod,
 } from "@shared/time";
+import { buildProfitComparison, type ComparisonRow } from "@shared/comparison";
+import { buildBranchComparison, type BranchComparison } from "@shared/branch-report";
 import type { TenantContext } from "@shared/types/auth.types";
 import type { ReportFilterInput } from "@shared/validation/report.schema";
 
@@ -86,17 +103,12 @@ export interface ExpensesReport {
 
 export async function getBranchIds(ctx: TenantContext, branchId?: string): Promise<string[]> {
   if (branchId) {
-    const branch = await prisma.branch.findUnique({ where: { id: branchId } });
-    if (!branch || branch.businessId !== ctx.businessId) {
-      throw appError.tenantViolation("Branch does not belong to this business.");
-    }
+    await requireBranchAccess(ctx, branchId);
     return [branchId];
   }
-  const branches = await prisma.branch.findMany({
-    where: { businessId: ctx.businessId, status: "ACTIVE" },
-    select: { id: true },
-  });
-  return branches.map((b) => b.id);
+  // Consolidated: every branch this member may see — INCLUDING inactive ones,
+  // so closing a branch never removes its history from the totals.
+  return (await listAccessibleBranches(ctx)).map((b) => b.id);
 }
 
 async function resolve(ctx: TenantContext, filters: ReportFilterInput) {
@@ -263,6 +275,78 @@ export async function getProfitReport(
   const f = await computePeriodFinancials(branchIds, period, biz.offsetMinutes, { withCost: true });
   const { salesCount: _a, returnsCount: _b, discounts: _c, daily: _d, ...profit } = f;
   return { period: { fromKey: period.fromKey, toKey: period.toKey }, ...profit };
+}
+
+export interface BranchComparisonReport extends BranchComparison {
+  period: PeriodInfo;
+}
+
+/**
+ * Compare branches side by side for one period. Business plan. Only branches the
+ * member may see are included (inactive ones too, so history is never dropped),
+ * and each branch uses computePeriodFinancials — the same calculation as every
+ * other report — so the totals equal the consolidated profit report.
+ */
+export async function getBranchComparisonReport(
+  ctx: TenantContext,
+  filters: ReportFilterInput,
+): Promise<BranchComparisonReport> {
+  requireFinancialReports(ctx);
+  await requireFeature(ctx, FEATURE_KEYS.MULTI_BRANCH);
+  const { biz, period } = await resolve(ctx, filters);
+  const branches = await listAccessibleBranches(ctx);
+
+  const rows = await Promise.all(
+    branches.map(async (b) => {
+      const f = await computePeriodFinancials([b.id], period, biz.offsetMinutes, { withCost: true });
+      return {
+        branchId: b.id,
+        branchName: b.name,
+        closed: b.status !== "ACTIVE",
+        salesCount: f.salesCount,
+        netSales: f.netSales,
+        cogs: f.cogs,
+        grossProfit: f.grossProfit,
+        expenses: f.expenses,
+        operatingProfit: f.operatingProfit,
+      };
+    }),
+  );
+  return { period: { fromKey: period.fromKey, toKey: period.toKey }, ...buildBranchComparison(rows) };
+}
+
+export interface ProfitComparison {
+  current: ProfitReport;
+  previous: ProfitReport;
+  rows: ComparisonRow[];
+}
+
+/**
+ * Profit for the selected period next to the equal-length period immediately
+ * before it. Both sides use computePeriodFinancials, the same function as the
+ * profit report, so the numbers always reconcile. Pro feature.
+ */
+export async function getProfitComparison(
+  ctx: TenantContext,
+  filters: ReportFilterInput,
+): Promise<ProfitComparison> {
+  requireFinancialReports(ctx);
+  await requireFeature(ctx, FEATURE_KEYS.ADVANCED_REPORTS);
+  const { biz, period } = await resolve(ctx, filters);
+  const prevPeriod = previousPeriod(period, biz.offsetMinutes);
+  const branchIds = await getBranchIds(ctx, filters.branchId);
+
+  const [cur, prev] = await Promise.all([
+    computePeriodFinancials(branchIds, period, biz.offsetMinutes, { withCost: true }),
+    computePeriodFinancials(branchIds, prevPeriod, biz.offsetMinutes, { withCost: true }),
+  ]);
+  const strip = (f: PeriodFinancials, p: { fromKey: string; toKey: string }): ProfitReport => {
+    const { salesCount: _a, returnsCount: _b, discounts: _c, daily: _d, ...profit } = f;
+    return { period: { fromKey: p.fromKey, toKey: p.toKey }, ...profit };
+  };
+  const current = strip(cur, period);
+  const previous = strip(prev, prevPeriod);
+  return { current, previous, rows: buildProfitComparison(current, previous) };
 }
 
 /** Current stock and valuation. Includes products that have never been stocked (qty 0). */
