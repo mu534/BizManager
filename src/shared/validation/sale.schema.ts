@@ -3,6 +3,19 @@
  */
 import { z } from "zod";
 
+export const paymentVerificationStatusSchema = z.enum([
+  "VERIFIED",
+  "PENDING_VERIFICATION",
+  "FAILED",
+]);
+
+export const splitPaymentInputSchema = z.object({
+  accountId: z.string().uuid("Invalid payment account"),
+  amountMinor: z.number().int().positive("Payment amount must be a positive integer"),
+  verificationStatus: paymentVerificationStatusSchema.optional().default("VERIFIED"),
+});
+export type SplitPaymentInput = z.infer<typeof splitPaymentInputSchema>;
+
 export const cartItemSchema = z.object({
   productId: z.string().uuid("Invalid product"),
   /** Actual selling price as decimal string — e.g. "150.00" */
@@ -21,23 +34,35 @@ export const cartItemSchema = z.object({
 
 export type CartItemInput = z.infer<typeof cartItemSchema>;
 
-export const createSaleSchema = z.object({
-  branchId: z.string().uuid("Invalid branch"),
-  items: z
-    .array(cartItemSchema)
-    .min(1, "A sale must have at least one item"),
-  /** Sale-level discount as decimal string */
-  discountAmount: z
-    .string()
-    .optional()
-    .default("0")
-    .refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) >= 0, "Invalid discount"),
-  /** Payment account ID */
-  accountId: z.string().uuid("Invalid payment account"),
-  notes: z.string().max(500).optional(),
-  /** Client-generated UUID for offline idempotency */
-  syncOperationId: z.string().uuid().optional(),
-});
+export const createSaleSchema = z
+  .object({
+    branchId: z.string().uuid("Invalid branch"),
+    items: z
+      .array(cartItemSchema)
+      .min(1, "A sale must have at least one item"),
+    /** Sale-level discount as decimal string */
+    discountAmount: z
+      .string()
+      .optional()
+      .default("0")
+      .refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) >= 0, "Invalid discount"),
+    /** Payment account ID — required when payments is absent */
+    accountId: z.string().uuid("Invalid payment account").optional(),
+    /** Split-payment array — required when accountId is absent */
+    payments: z.array(splitPaymentInputSchema).min(1).optional(),
+    notes: z.string().max(500).optional(),
+    /** Client-generated UUID for offline idempotency */
+    syncOperationId: z.string().uuid().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.payments && !data.accountId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Either accountId or payments is required",
+        path: ["accountId"],
+      });
+    }
+  });
 
 export type CreateSaleInput = z.infer<typeof createSaleSchema>;
 

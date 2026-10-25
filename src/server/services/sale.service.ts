@@ -184,11 +184,6 @@ export async function createSale(
           throw appError.tenantViolation("Branch does not belong to this business.");
         }
 
-        const account = await tx.financialAccount.findUnique({ where: { id: input.accountId } });
-        if (!account || account.businessId !== ctx.businessId || account.status !== "ACTIVE") {
-          throw appError.invalidAccount("Payment account not found or inactive.");
-        }
-
         // Load every product in ONE query, scoped to this business.
         const productIds = [...new Set(input.items.map((i) => i.productId))];
         const rows = await tx.product.findMany({
@@ -220,6 +215,21 @@ export async function createSale(
         } catch (err) {
           if (err instanceof SaleMathError) throw appError.validationError(err.message);
           throw err;
+        }
+
+        // Resolve payments — either split array or the single accountId shorthand.
+        const paymentsToProcess = input.payments ?? [
+          {
+            accountId: input.accountId!,
+            amountMinor: computed.finalTotal,
+            verificationStatus: "VERIFIED" as const,
+          },
+        ];
+
+        // Validate that the payment amounts sum to the sale total.
+        const paymentSum = paymentsToProcess.reduce((s, p) => s + p.amountMinor, 0);
+        if (paymentSum !== computed.finalTotal) {
+          throw appError.validationError("Payment amounts must sum to the sale total");
         }
 
         const sale = await tx.sale.create({
@@ -270,16 +280,34 @@ export async function createSale(
           })),
         });
 
-        // A sale is paid in full into the chosen account. Note: this RECORDS
-        // the payment method; it does not verify any electronic payment.
-        await tx.payment.create({
-          data: { saleId: sale.id, accountId: account.id, amount: computed.finalTotal },
-        });
-        if (computed.finalTotal > 0) {
-          await creditAccount(tx, account.id, computed.finalTotal, "SALE_PAYMENT", {
-            referenceId: sale.id,
-            referenceType: "Sale",
+        // Validate all payment accounts belong to this business and are ACTIVE.
+        for (const p of paymentsToProcess) {
+          const payAccount = await tx.financialAccount.findUnique({
+            where: { id: p.accountId },
           });
+          if (!payAccount || payAccount.businessId !== ctx.businessId || payAccount.status !== "ACTIVE") {
+            throw appError.invalidAccount("Payment account not found or inactive.");
+          }
+        }
+
+        // Record one Payment row per split entry.
+        await tx.payment.createMany({
+          data: paymentsToProcess.map((p) => ({
+            saleId: sale.id,
+            accountId: p.accountId,
+            amount: p.amountMinor,
+            verificationStatus: p.verificationStatus,
+          })),
+        });
+
+        // Credit account balances — VERIFIED payments only.
+        for (const p of paymentsToProcess) {
+          if (p.verificationStatus === "VERIFIED" && p.amountMinor > 0) {
+            await creditAccount(tx, p.accountId, p.amountMinor, "SALE_PAYMENT", {
+              referenceId: sale.id,
+              referenceType: "Sale",
+            });
+          }
         }
 
         return tx.sale.findUniqueOrThrow({ where: { id: sale.id }, include: SALE_INCLUDE });
