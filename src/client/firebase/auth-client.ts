@@ -26,6 +26,7 @@ import {
   type UserCredential,
 } from "firebase/auth";
 import { getFirebaseApp } from "./firebase-client";
+import { clearLocalBusinessData } from "@client/db/dexie";
 
 const googleProvider = new GoogleAuthProvider();
 
@@ -110,8 +111,16 @@ export async function signInWithGoogle(): Promise<void> {
 
 /**
  * Sign out from both Firebase and the server session.
+ * Clears local business data from IndexedDB before signing out.
+ * Unsynced operations are preserved (clearLocalBusinessData keeps them)
+ * so shopkeepers do not lose sales recorded offline.
  */
 export async function signOut(): Promise<void> {
+  // Clear local business data from IndexedDB (product replicas + synced records).
+  // Unsynced operations are intentionally kept so they can sync on next sign-in.
+  await clearLocalBusinessData().catch(() => {
+    // Non-critical — proceed with sign-out even if IndexedDB clear fails.
+  });
   // Clear the server-side session cookie first.
   await fetch("/api/auth/sign-out", { method: "POST" });
   // Then sign out of Firebase client-side.
