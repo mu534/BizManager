@@ -18,8 +18,14 @@ describe("csvCell", () => {
   it("neutralises spreadsheet formula injection in text", () => {
     expect(csvCell("=HYPERLINK(\"http://evil\")")).toBe('"\'=HYPERLINK(""http://evil"")"');
     expect(csvCell("+1+1")).toBe("'+1+1");
-    expect(csvCell("-2")).toBe("'-2");
+    expect(csvCell("-2+3")).toBe("'-2+3");
+    expect(csvCell("-cmd|' /C calc'!A0").startsWith("'-cmd")).toBe(true);
     expect(csvCell("@SUM(A1)")).toBe("'@SUM(A1)");
+  });
+  it("keeps negative money amounts numeric (a loss must not become text)", () => {
+    expect(csvCell("-5.00")).toBe("-5.00");
+    expect(csvCell("-0.50")).toBe("-0.50");
+    expect(csvCell("-12")).toBe("-12");
   });
   it("leaves numbers (including negatives) and null alone", () => {
     expect(csvCell(-50)).toBe("-50");
