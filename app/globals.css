@@ -155,3 +155,15 @@ body {
   .bm-marquee:hover .bm-marquee-track, .bm-marquee:focus-within .bm-marquee-track { animation-play-state: paused; }
 }
 @keyframes bm-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+@utility bg-hero-gradient {
+  background: linear-gradient(135deg, #064e3b 0%, #0b7f6d 45%, #0e7490 100%);
+}
+
+@utility bg-cta-gradient {
+  background: linear-gradient(135deg, #0d1b2e 0%, #083f39 50%, #0a5148 100%);
+}
+
+@utility section-dark {
+  background-color: var(--color-ink-900);
+}
