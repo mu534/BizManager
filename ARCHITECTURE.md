@@ -720,6 +720,11 @@ For entities where the same record may be edited by two devices (e.g., product p
 
 ## 15. SaaS Billing Architecture
 
+> **Superseded (October 2026).** The trial, the STARTER/BUSINESS/PRO plan names and the
+> gateway options described below were replaced by the implementation in §22: plans
+> **BASIC / PRO / BUSINESS**, **no automatic trial**, and **manual Telebirr / bank-transfer
+> payments** verified by a platform administrator. The text below is kept as design history.
+
 ### Strict separation from merchant finances
 The platform's billing system is an entirely separate domain. Merchant Telebirr and bank balances have nothing to do with subscription payments.
 
@@ -1132,7 +1137,7 @@ Recommendation: Option A or C — never silently reject a completed sale, but su
 
 **UD-003: Subscription payment integration**  
 How will merchants pay for their subscription? Options: Chapa (Ethiopian payment gateway), Telebirr direct integration, manual bank transfer + admin confirmation, international card (Stripe).  
-**→ Awaiting decision. Required before Phase 11.**
+**→ Resolved (October 2026): manual transfer + administrator confirmation. See §22.**
 
 **UD-007: Barcode scanning implementation**  
 Web barcode scanning options: device camera + JavaScript barcode library (e.g., ZXing-js), or USB barcode scanner (keyboard wedge, works natively as text input). Both can be supported, but the primary expected hardware should be confirmed.  
@@ -1154,3 +1159,61 @@ Firebase Admin SDK does not run on the Edge runtime. `next.config.ts` must ensur
 
 **TR-005: Prisma v6 + connection pooling on serverless**  
 If the application is deployed to a serverless environment (Vercel), Prisma v6 connections need connection pooling (via Prisma Accelerate or PgBouncer) to prevent connection exhaustion. This must be addressed before production deployment. Note: do not upgrade to Prisma v7/v8 to solve this — the pooling requirement exists in all versions; Prisma Accelerate or an external PgBouncer is the correct solution.
+
+
+---
+
+## 22. Implemented SaaS layer (October 2026)
+
+This section describes what the code now does and supersedes §15 where they differ.
+
+**Plans and entitlements.** `src/shared/plans.ts` is the single source of truth for plan
+features and usage limits. Prices and the yearly discount are database rows (`plans`),
+editable by a super administrator. Feature checks happen on the server
+(`subscription.service.ts`: `requireFeature`, `assertWithinLimit`); UI hiding is cosmetic.
+
+**Subscription lifecycle.** `src/shared/subscription-access.ts` (pure): ACTIVE → GRACE
+(3 days, writes allowed, notice shown) → READ_ONLY (view and export only). No subscription
+means read-only. Derived from stored dates and the **server** clock. Nothing is deleted.
+
+**Manual payments.** Owner submits method, reference and a receipt (validated by file
+signature, stored privately in Firebase Storage, served only through an authorized route).
+A `FINANCE`/`SUPER_ADMIN` administrator approves or rejects (reason required). Approval is a
+single guarded `PENDING → APPROVED` update, so retries and double reviewers cannot grant two
+periods. Every decision is written to the append-only `platform_audit_logs`.
+
+**Platform administration.** `/admin`, separate from business roles (`platform_admins`:
+`SUPER_ADMIN`, `FINANCE`, `SUPPORT`). Administrators see account, subscription, payment and
+support data only — never a business's sales, expenses or financial reports.
+
+**Business roles and report access.** OWNER, MANAGER, STAFF. Financial reports: owner always;
+a manager only with an explicit owner grant (`business_members.canViewFinancialReports`),
+cleared on demotion or deactivation; staff never. One server chokepoint:
+`permissions.canViewFinancialReports`.
+
+**Branches (Business plan).** `branch-access.service.requireBranchAccess` is the single
+check used by every service that takes a branch id: tenant ownership, per-member grants
+(`branch_access`; owner all; single-branch businesses everyone), and ACTIVE status for writes.
+The "current branch" cookie is only a preference and is re-validated on every request.
+Closed branches keep their history and stay in consolidated totals. Money accounts are shared
+by the business (not split per branch).
+
+**Offline.** Sales, expenses and stock changes are queued in IndexedDB with a stable
+operation id and delivered by `POST /api/{businessId}/sync/batch`. State transitions are a pure
+state machine (`src/shared/sync-policy.ts`): connectivity failures never consume retries;
+a subscription restriction **holds** items (they resume after renewal); business-rule
+rejections become *conflicts* kept for the user (retry, or confirmed "don't send"); nothing is
+deleted by policy.
+
+**Reports.** All reports share `computePeriodFinancials`; per-product, per-branch and
+previous-period views reconcile with the profit report by construction. CSV exports
+(sales, profit, expenses, inventory, products) require the Pro export feature and neutralise
+spreadsheet formula injection. These are management reports, not certified statements.
+
+**Internationalisation.** English at `/`, Afaan Oromo at `/om` (static); sign-in/up use a
+`?lang=` parameter or a preference cookie. Dictionaries share one TypeScript shape so a
+missing key fails the build.
+
+**Support.** Customers raise tickets in the app (works even when read-only); support staff
+reply and change status in `/admin/support`; status changes and replies are audited (message
+text is not copied into the audit log).

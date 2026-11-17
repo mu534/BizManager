@@ -13,10 +13,8 @@
 import "server-only";
 import { getSessionUserId } from "./session";
 import { getUserById } from "@server/services/user.service";
-import {
-  requireBusinessMembership,
-  requireBranch,
-} from "@server/services/business.service";
+import { requireBusinessMembership } from "@server/services/business.service";
+import { requireBranchAccess } from "@server/services/branch-access.service";
 import { appError } from "@shared/errors";
 import type { TenantContext, UserIdentityContext } from "@shared/types/auth.types";
 import { UserRole } from "@shared/types/auth.types";
@@ -50,7 +48,11 @@ export async function resolveContext(
   // 4. Optionally verify branch access.
   let resolvedBranchId: string | null = null;
   if (branchId) {
-    const branch = await requireBranch(branchId, businessId);
+    // Tenant check AND per-member branch access (owner: all; others: granted).
+    const branch = await requireBranchAccess(
+      { businessId, membershipId: membership.id, role: membership.role as UserRole },
+      branchId,
+    );
     resolvedBranchId = branch.id;
   }
 

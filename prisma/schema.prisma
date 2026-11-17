@@ -139,6 +139,24 @@ enum SyncStatus {
   FAILED
 }
 
+enum PaymentVerificationStatus {
+  VERIFIED
+  PENDING_VERIFICATION
+  FAILED
+}
+
+enum DebtRepaymentMethod {
+  CASH
+  TELEBIRR
+  BANK
+}
+
+enum CustomerCreditSourceType {
+  OVERPAYMENT
+  RETURN
+  MANUAL
+}
+
 // =============================================================
 // DOMAIN A — MERCHANT FINANCES
 // =============================================================
@@ -618,6 +636,8 @@ model Payment {
   /// Amount paid via this account — integer, smallest currency unit.
   amount Int
 
+  verificationStatus PaymentVerificationStatus @default(VERIFIED)
+
   sale    Sale             @relation(fields: [saleId], references: [id], onDelete: Restrict)
   account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
 
@@ -696,6 +716,121 @@ model SaleReturnItem {
   @@index([saleReturnId])
   @@index([saleItemId])
   @@map("sale_return_items")
+}
+
+model Customer {
+  id         String  @id @default(uuid())
+  businessId String
+  name       String
+  phone      String?
+  email      String?
+  notes      String?
+
+  debts              CustomerDebt[]
+  credits            CustomerCredit[]
+  debtRepayments     CustomerDebtRepayment[]
+  creditApplications CustomerCreditApplication[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([businessId])
+  @@map("customers")
+}
+
+model CustomerDebt {
+  id                  String @id @default(uuid())
+  businessId          String
+  customerId          String
+  saleId              String
+  originalAmountMinor Int
+  outstandingMinor    Int
+  operationId         String @unique
+
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  repayments   CustomerDebtRepayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([businessId])
+  @@index([customerId])
+  @@map("customer_debts")
+}
+
+model CustomerDebtRepayment {
+  id                 String                    @id @default(uuid())
+  businessId         String
+  customerId         String
+  debtId             String
+  amountMinor        Int
+  paymentMethod      DebtRepaymentMethod
+  verificationStatus PaymentVerificationStatus @default(VERIFIED)
+  operationId        String                    @unique
+  notes              String?
+
+  customer Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  debt     CustomerDebt @relation(fields: [debtId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@index([businessId])
+  @@index([debtId])
+  @@map("customer_debt_repayments")
+}
+
+model CustomerCredit {
+  id          String                   @id @default(uuid())
+  businessId  String
+  customerId  String
+  amountMinor Int
+  reason      String
+  sourceType  CustomerCreditSourceType
+  sourceId    String?
+  operationId String                   @unique
+
+  customer     Customer                    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  applications CustomerCreditApplication[]
+
+  createdAt DateTime @default(now())
+
+  @@index([businessId])
+  @@index([customerId])
+  @@map("customer_credits")
+}
+
+model CustomerCreditApplication {
+  id           String  @id @default(uuid())
+  businessId   String
+  customerId   String
+  creditId     String
+  saleId       String?
+  amountMinor  Int
+  approvedById String?
+  operationId  String  @unique
+
+  customer Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  credit   CustomerCredit @relation(fields: [creditId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@index([businessId])
+  @@index([customerId])
+  @@map("customer_credit_applications")
+}
+
+model SaleRounding {
+  id                 String @id @default(uuid())
+  saleId             String @unique
+  businessId         String
+  originalTotalMinor Int
+  roundedTotalMinor  Int
+  roundingDifference Int
+
+  createdAt DateTime @default(now())
+
+  @@index([businessId])
+  @@map("sale_roundings")
 }
 
 // ─────────────────────────────────────────────────────────────

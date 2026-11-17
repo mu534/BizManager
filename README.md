@@ -36,15 +36,19 @@ per-business settings; ETB is the default.
   transfers, sales / profit / expense / inventory reports.
 - Team management (Pro): add staff/managers, **owner-controlled financial-report
   access** for managers, deactivation, audit trail.
-- Product profitability and best-seller report with CSV export (Pro).
-- Offline recording of **sales and expenses** with idempotent sync.
+- Product profitability and best-seller report with CSV export, and a comparison with the
+  previous period of equal length on the profit report (Pro).
+- **Multiple branches (Business):** create, rename and close branches; per-branch stock,
+  sales and expenses; a branch switcher; owner-assigned branch access for managers and
+  staff; a branch filter on reports and a cross-branch comparison report whose totals
+  equal the consolidated profit report.
+- Offline recording of **sales, expenses and stock changes** with idempotent sync, a
+  clear distinction between *offline*, *paused by subscription* and *needs attention*,
+  and a review page (`/app/{id}/sync`) to retry or, after confirmation, set aside items.
 
 **Not built yet (the website marks these "Coming soon")**
 
-- Multiple branches (Business plan): the data model supports branches, but there is
-  no screen to create or switch them, and no consolidated report.
-- Report comparisons with previous periods; exports other than the product report.
-- Offline **inventory** changes (only sales and expenses sync offline today).
+- Exports other than the product report (sales, profit, expenses, inventory).
 - Support-ticket workflow in the console.
 - Barcode scanning and tax calculation are deliberately out of scope.
 
@@ -54,6 +58,13 @@ per-business settings; ETB is the default.
   depreciation or non-operating items.
 - Sale returns restock at the original sale's cost and do not re-average cost.
 - Team members must already have an account; no invitation emails are sent.
+- Branches: money accounts (Cash, Telebirr, bank) are shared by the whole business, not
+  split per branch. Switching branch needs a connection; the offline product list on a
+  device reflects the branch it last loaded. A closed branch keeps its history and
+  stays in totals but accepts no new transactions. Downgrading a plan does not
+  automatically close extra branches — it only stops new ones being added. In a
+  multi-branch business a newly added member can use no branch until the owner
+  assigns one.
 - Existing managers lose financial-report access until the owner grants it
   (migration `20261018210000`).
 - The Afaan Oromo copy needs review by a native speaker; the Privacy and Terms pages
@@ -89,7 +100,8 @@ database.
 | Sell, view stock | ✓ | ✓ | ✓ |
 | Record expenses | ✓ | ✓ | – |
 | Financial reports, balances | ✓ | only if granted by owner | – |
-| Team, plan & billing | ✓ | – | – |
+| Team, branches, plan & billing | ✓ | – | – |
+| Branches | all | only those assigned | only those assigned |
 
 **Platform administrators** (`platform_admins`) are a separate grant with roles
 `SUPER_ADMIN`, `FINANCE`, `SUPPORT`. They see subscription and payment data only —
@@ -105,7 +117,7 @@ the server clock (`src/shared/subscription-access.ts`).
 
 ### Offline
 
-Sales and expenses are written to IndexedDB with a stable client operation id and
+Sales, expenses and stock changes (opening stock, receipt, adjustment, damage) are written to IndexedDB with a stable client operation id and
 sent to `POST /api/{businessId}/sync/batch`. The server applies each operation once
 (idempotent), revalidates membership, permissions and subscription, and returns a
 per-operation result. Operations that cannot be applied are kept and shown, never
