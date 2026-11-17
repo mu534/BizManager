@@ -157,7 +157,48 @@ body {
 @keyframes bm-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
 @utility bg-hero-gradient {
-  background: linear-gradient(135deg, #064e3b 0%, #0b7f6d 45%, #0e7490 100%);
+  background:
+    radial-gradient(60% 80% at 85% 10%, rgb(52 211 153 / 0.35) 0%, transparent 60%),
+    radial-gradient(50% 60% at 0% 100%, rgb(8 18 31 / 0.55) 0%, transparent 70%),
+    linear-gradient(135deg, #062f2b 0%, #0a5148 40%, #0b7f6d 75%, #34b898 100%);
+}
+
+/* Fine grid that fades out toward the edges of a surface. */
+@utility bg-grid-fine {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.07) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+}
+
+@utility bg-mint {
+  background: linear-gradient(180deg, #f1fbf7 0%, #e8f8f1 100%);
+}
+
+@utility bg-night {
+  background:
+    radial-gradient(70% 60% at 20% 0%, rgb(20 153 127 / 0.28) 0%, transparent 60%),
+    linear-gradient(160deg, #08121f 0%, #083f39 100%);
+}
+
+/* Diagonal section edge so dark bands sit cleanly against light ones. */
+@utility clip-slant-top {
+  clip-path: polygon(0 3vw, 100% 0, 100% 100%, 0 100%);
+  margin-top: -3vw;
+  padding-top: calc(3vw + 4rem);
+}
+@utility clip-slant-both {
+  clip-path: polygon(0 3vw, 100% 0, 100% calc(100% - 3vw), 0 100%);
+  margin-block: -3vw;
+  padding-block: calc(3vw + 4rem);
+}
+
+/* One orchestrated entrance for the hero product shot. */
+@keyframes bm-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: no-preference) {
+  .bm-rise { animation: bm-rise 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  .bm-rise-delay { animation-delay: 0.15s; }
 }
 
 @utility bg-cta-gradient {

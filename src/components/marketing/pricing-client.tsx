@@ -44,7 +44,7 @@ export function PricingClient({
         <div
           role="radiogroup"
           aria-label={`${labels.monthly} / ${labels.yearly}`}
-          className="inline-flex rounded-control border border-line-strong bg-surface p-0.5 text-sm"
+          className="inline-flex rounded-full border border-brand-200 bg-brand-50 p-1 text-sm"
         >
           {(["MONTHLY", "YEARLY"] as const).map((v) => (
             <button
@@ -53,10 +53,10 @@ export function PricingClient({
               role="radio"
               aria-checked={period === v}
               onClick={() => setPeriod(v)}
-              className={`rounded-[5px] px-4 py-1.5 font-medium transition focus-visible:outline-2 focus-visible:outline-brand-600 ${
+              className={`rounded-full px-5 py-1.5 font-medium transition focus-visible:outline-2 focus-visible:outline-brand-600 ${
                 period === v
-                  ? "bg-brand-600 text-white"
-                  : "text-ink-700 hover:bg-ink-100"
+                  ? "bg-brand-gradient text-white shadow-card"
+                  : "text-ink-700 hover:bg-brand-100"
               }`}
             >
               {v === "MONTHLY" ? labels.monthly : labels.yearly}
@@ -65,21 +65,21 @@ export function PricingClient({
         </div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid items-stretch gap-6 pt-4 lg:grid-cols-3">
         {plans.map((p) => {
           const amount =
             period === "MONTHLY" ? p.monthlyMinor : p.yearlyMinor;
           return (
             <article
               key={p.code}
-              className={`flex flex-col rounded-card p-6 ${
+              className={`relative flex flex-col rounded-hero p-6 ${
                 p.featured
-                  ? "bg-brand-gradient text-white shadow-pop ring-2 ring-brand-400/40"
-                  : "border border-line-strong bg-surface shadow-card"
+                  ? "bg-night bg-grid-light text-white shadow-[0_30px_70px_-25px_rgb(8_63_57/0.8)] ring-2 ring-brand-400/60 lg:-translate-y-3"
+                  : "border border-brand-100 bg-surface shadow-card"
               }`}
             >
               {p.featured && (
-                <div className="mb-3 self-start rounded-full border border-white/30 bg-white/20 px-3 py-0.5 text-[11px] font-semibold uppercase tracking-widest text-white">
+                <div className="absolute -top-3 right-6 rounded-full bg-brand-gradient px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-white shadow-card">
                   Most popular
                 </div>
               )}
@@ -142,8 +142,8 @@ export function PricingClient({
                 href={signUpHref}
                 className={`mt-5 inline-flex h-11 items-center justify-center rounded-control text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 ${
                   p.featured
-                    ? "bg-white text-brand-800 hover:bg-brand-50 focus-visible:outline-white"
-                    : "border border-line-strong bg-surface text-ink-800 hover:bg-ink-50 focus-visible:outline-brand-600"
+                    ? "bg-brand-gradient text-white shadow-card hover:brightness-110 focus-visible:outline-white"
+                    : "border border-brand-300 bg-surface text-brand-800 hover:bg-brand-50 focus-visible:outline-brand-600"
                 }`}
               >
                 {labels.cta}

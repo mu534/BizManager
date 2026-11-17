@@ -10,50 +10,50 @@ const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL;
 const SUPPORT_PHONE = process.env.NEXT_PUBLIC_SUPPORT_PHONE;
 
 const primaryBtn =
-  "inline-flex h-12 items-center justify-center rounded-control bg-white px-6 text-base font-medium text-brand-800 shadow-pop transition hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
+  "inline-flex h-12 items-center justify-center rounded-xl bg-white px-6 text-base font-semibold text-brand-800 shadow-pop transition hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
 const secondaryBtn =
-  "inline-flex h-12 items-center justify-center rounded-control border border-white/40 bg-white/10 px-6 text-base font-medium text-white backdrop-blur-sm transition hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
+  "inline-flex h-12 items-center justify-center rounded-xl border border-white/30 bg-white/10 px-6 text-base font-medium text-white backdrop-blur-sm transition hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
+
+type Tone = "light" | "mint" | "dark";
 
 function Section({
   id,
   title,
   subtitle,
   children,
-  tint,
-  dark,
+  tone = "light",
+  align = "center",
   className,
 }: {
   id?: string;
   title: string;
   subtitle?: string;
   children: ReactNode;
-  tint?: boolean;
-  dark?: boolean;
+  tone?: Tone;
+  align?: "center" | "left";
   className?: string;
 }) {
-  const bg = dark ? "" : tint ? "bg-ink-50" : "bg-surface";
+  const bg = tone === "dark" ? "bg-night bg-grid-light" : tone === "mint" ? "bg-mint" : "bg-surface";
+  const dark = tone === "dark";
+  const left = align === "left";
   return (
     <section
       id={id}
       aria-labelledby={id ? `${id}-title` : undefined}
-      className={`scroll-mt-20 py-16 sm:py-20 ${bg} ${className ?? ""}`}
+      className={`scroll-mt-20 py-16 sm:py-24 ${bg} ${className ?? ""}`}
     >
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <div className="mx-auto mb-10 max-w-2xl text-center">
+        <div className={`mb-12 max-w-2xl ${left ? "" : "mx-auto text-center"}`}>
           <h2
             id={id ? `${id}-title` : undefined}
-            className={`text-2xl font-semibold tracking-tight sm:text-3xl ${
+            className={`text-3xl font-semibold tracking-tight sm:text-4xl ${
               dark ? "text-white" : "text-ink-900"
             }`}
           >
             {title}
           </h2>
           {subtitle && (
-            <p
-              className={`mt-3 text-base ${
-                dark ? "text-ink-300" : "text-ink-600"
-              }`}
-            >
+            <p className={`mt-4 text-base leading-relaxed sm:text-lg ${dark ? "text-brand-100" : "text-ink-600"}`}>
               {subtitle}
             </p>
           )}
@@ -67,13 +67,13 @@ function Section({
 function Logo({ white }: { white?: boolean }) {
   return (
     <span
-      className={`inline-flex items-center gap-2 text-[17px] font-semibold tracking-tight ${
+      className={`inline-flex items-center gap-2.5 text-[18px] font-semibold tracking-tight ${
         white ? "text-white" : "text-ink-900"
       }`}
     >
       <span
         aria-hidden="true"
-        className="grid size-7 place-items-center rounded-control bg-brand-gradient text-sm font-bold text-white"
+        className="grid size-8 place-items-center rounded-lg bg-brand-gradient text-sm font-bold text-white shadow-card ring-1 ring-white/30"
       >
         B
       </span>
@@ -92,18 +92,38 @@ function Check({ tone }: { tone: "brand" | "muted" | "warn" | "white" }) {
       ? "text-white"
       : "text-ink-400";
   return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 20 20"
-      className={`mt-0.5 size-4 shrink-0 ${c}`}
-      fill="currentColor"
-    >
+    <svg aria-hidden="true" viewBox="0 0 20 20" className={`mt-0.5 size-4 shrink-0 ${c}`} fill="currentColor">
       <path
         fillRule="evenodd"
         d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.5 7.5a1 1 0 0 1-1.4 0L3.3 9.7a1 1 0 1 1 1.4-1.4l3.8 3.8 6.8-6.8a1 1 0 0 1 1.4 0Z"
         clipRule="evenodd"
       />
     </svg>
+  );
+}
+
+/** Icons follow the fixed order of t.features.items (same in every locale). */
+const FEATURE_ICONS: readonly string[] = [
+  "M21 8 12 3 3 8m18 0-9 5m9-5v8l-9 5m0-8L3 8m9 5v8M3 8v8l9 5", // inventory: box
+  "M3 4h2l2.4 11h10.2L20 7H6.2M9 20a1 1 0 1 0 0 .01M17 20a1 1 0 1 0 0 .01", // point of sale: cart
+  "M7 3h10a1 1 0 0 1 1 1v17l-3-2-3 2-3-2-3 2V4a1 1 0 0 1 1-1Zm2 5h6m-6 4h6", // expenses: receipt
+  "M3 7a2 2 0 0 1 2-2h13v4M3 7v10a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1H5a2 2 0 0 1-2-1Zm13 6h2", // accounts: wallet
+  "M4 20V10m6 10V4m6 16v-7m5 7H3", // profit: bars
+  "M16 11a3 3 0 1 0-6 0 3 3 0 0 0 6 0ZM5 20a7 7 0 0 1 14 0M19 8a2.5 2.5 0 0 1 0 5", // staff: user
+  "M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5v.01", // offline: wifi
+];
+
+function FeatureIcon({ index }: { index: number }) {
+  const d = FEATURE_ICONS[index % FEATURE_ICONS.length];
+  return (
+    <span
+      aria-hidden="true"
+      className="grid size-11 place-items-center rounded-xl bg-brand-50 text-brand-700 ring-1 ring-brand-100"
+    >
+      <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d={d} />
+      </svg>
+    </span>
   );
 }
 
@@ -128,7 +148,7 @@ export function Landing({ locale }: { locale: Locale }) {
       </a>
 
       {/* Navigation */}
-      <header className="sticky top-0 z-40 border-b border-ink-800/50 bg-ink-900/95 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-brand-900/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
           <Link href={homePathFor(locale)} aria-label="BizManager">
             <Logo white />
@@ -141,29 +161,29 @@ export function Landing({ locale }: { locale: Locale }) {
               <a
                 key={l.href}
                 href={l.href}
-                className="rounded-control px-3 py-2 text-ink-300 transition hover:bg-ink-800 hover:text-white"
+                className="rounded-lg px-3 py-2 text-brand-100 transition hover:bg-white/10 hover:text-white"
               >
                 {l.label}
               </a>
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-2">
-            <LanguageSwitcher current={locale} label={t.nav.language} />
+            <LanguageSwitcher current={locale} label={t.nav.language} tone="dark" />
             <Link
               href={signIn}
-              className="hidden rounded-control px-3 py-2 text-sm font-medium text-ink-300 transition hover:bg-ink-800 hover:text-white sm:inline-block"
+              className="hidden rounded-full border border-white/25 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10 sm:inline-block"
             >
               {t.nav.signIn}
             </Link>
             <Link
               href={signUp}
-              className="hidden h-10 items-center rounded-control bg-brand-gradient px-4 text-sm font-medium text-white shadow-card hover:brightness-110 sm:inline-flex"
+              className="hidden h-10 items-center rounded-full bg-white px-5 text-sm font-semibold text-brand-800 shadow-card transition hover:bg-brand-50 sm:inline-flex"
             >
               {t.nav.getStarted}
             </Link>
             <details className="relative lg:hidden">
               <summary
-                className="grid size-10 cursor-pointer list-none place-items-center rounded-control border border-ink-700 text-ink-200 [&::-webkit-details-marker]:hidden"
+                className="grid size-10 cursor-pointer list-none place-items-center rounded-control border border-white/25 text-white [&::-webkit-details-marker]:hidden"
                 aria-label={t.nav.menu}
               >
                 <svg
@@ -175,26 +195,26 @@ export function Landing({ locale }: { locale: Locale }) {
                   <path d="M3 5h14v2H3V5Zm0 4h14v2H3V9Zm0 4h14v2H3v-2Z" />
                 </svg>
               </summary>
-              <div className="absolute right-0 mt-2 w-56 rounded-card border border-ink-700 bg-ink-800 p-2 shadow-pop">
+              <div className="absolute right-0 mt-2 w-56 rounded-xl border border-white/15 bg-brand-900 p-2 shadow-pop">
                 {links.map((l) => (
                   <a
                     key={l.href}
                     href={l.href}
-                    className="block rounded-control px-3 py-2 text-sm text-ink-200 hover:bg-ink-700"
+                    className="block rounded-lg px-3 py-2 text-sm text-brand-100 hover:bg-white/10"
                   >
                     {l.label}
                   </a>
                 ))}
-                <hr className="my-1 border-ink-700" />
+                <hr className="my-1 border-white/15" />
                 <Link
                   href={signIn}
-                  className="block rounded-control px-3 py-2 text-sm text-ink-200 hover:bg-ink-700"
+                  className="block rounded-lg px-3 py-2 text-sm text-brand-100 hover:bg-white/10"
                 >
                   {t.nav.signIn}
                 </Link>
                 <Link
                   href={signUp}
-                  className="block rounded-control px-3 py-2 text-sm font-medium text-brand-300 hover:bg-ink-700"
+                  className="block rounded-lg px-3 py-2 text-sm font-semibold text-white hover:bg-white/10"
                 >
                   {t.nav.getStarted}
                 </Link>
@@ -206,19 +226,21 @@ export function Landing({ locale }: { locale: Locale }) {
 
       <main id="main">
         {/* Hero */}
-        <section className="bg-hero-gradient bg-grid-light">
-          <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className="relative overflow-hidden bg-hero-gradient">
+          <div aria-hidden="true" className="bg-grid-fine pointer-events-none absolute inset-0" />
+          <div className="relative mx-auto grid max-w-6xl items-center gap-14 px-4 pb-20 pt-14 sm:px-6 sm:pb-28 sm:pt-20 lg:grid-cols-[1fr_1.05fr]">
             <div>
-              <p className="inline-block rounded-control border border-brand-600/50 bg-brand-800/60 px-2.5 py-1 text-xs font-semibold uppercase tracking-widest text-brand-200">
+              <p className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3.5 py-1.5 text-sm font-medium text-brand-100 backdrop-blur-sm">
+                <span aria-hidden="true" className="size-2 rounded-full bg-brand-300" />
                 {t.hero.eyebrow}
               </p>
-              <h1 className="mt-4 text-4xl font-semibold leading-[1.1] tracking-tight text-white sm:text-5xl">
+              <h1 className="mt-6 text-4xl font-semibold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-[3.4rem]">
                 {t.hero.title}
               </h1>
-              <p className="mt-5 max-w-xl text-lg leading-relaxed text-brand-100">
+              <p className="mt-6 max-w-xl text-lg leading-relaxed text-brand-50/90">
                 {t.hero.subtitle}
               </p>
-              <div className="mt-8 flex flex-wrap gap-3">
+              <div className="mt-9 flex flex-wrap gap-3">
                 <Link href={signUp} className={primaryBtn}>
                   {t.hero.primaryCta}
                 </Link>
@@ -226,15 +248,13 @@ export function Landing({ locale }: { locale: Locale }) {
                   {t.hero.secondaryCta}
                 </a>
               </div>
-              <p className="mt-5 flex max-w-xl items-start gap-2 text-sm text-brand-200">
+              <p className="mt-6 flex max-w-xl items-start gap-2 text-sm leading-relaxed text-brand-100">
                 <Check tone="white" />
                 {t.hero.note}
               </p>
             </div>
-            <div className="mx-auto w-full max-w-md">
-              <div className="rounded-hero border border-brand-600/30 bg-ink-900/60 p-4 shadow-pop backdrop-blur-sm">
-                <ProductPreview t={t.preview} compact />
-              </div>
+            <div className="bm-rise bm-rise-delay mx-auto w-full max-w-xl lg:max-w-none">
+              <ProductPreview t={t.preview} compact />
             </div>
           </div>
         </section>
@@ -242,7 +262,7 @@ export function Landing({ locale }: { locale: Locale }) {
         {/* Capability strip */}
         <section
           aria-label="Capabilities"
-          className="border-b border-ink-800 bg-ink-900 bg-grid py-5"
+          className="border-b border-white/10 bg-ink-950 py-5"
         >
           <div className="bm-marquee">
             <div className="bm-marquee-track">
@@ -250,7 +270,7 @@ export function Landing({ locale }: { locale: Locale }) {
                 {t.marquee.map((m) => (
                   <li
                     key={m}
-                    className="whitespace-nowrap rounded-full border border-brand-700/50 bg-brand-800/40 px-4 py-1.5 text-sm font-medium text-brand-100"
+                    className="whitespace-nowrap rounded-full border border-brand-400/30 bg-brand-500/10 px-4 py-1.5 text-sm font-medium text-brand-100"
                   >
                     {m}
                   </li>
@@ -263,7 +283,7 @@ export function Landing({ locale }: { locale: Locale }) {
                 {t.marquee.map((m) => (
                   <li
                     key={m}
-                    className="whitespace-nowrap rounded-full border border-brand-700/50 bg-brand-800/40 px-4 py-1.5 text-sm font-medium text-brand-100"
+                    className="whitespace-nowrap rounded-full border border-brand-400/30 bg-brand-500/10 px-4 py-1.5 text-sm font-medium text-brand-100"
                   >
                     {m}
                   </li>
@@ -277,9 +297,9 @@ export function Landing({ locale }: { locale: Locale }) {
         <Section
           title={t.preview.title}
           subtitle={t.preview.subtitle}
-          className="bg-canvas"
+          tone="mint"
         >
-          <div className="mx-auto max-w-4xl">
+          <div className="mx-auto max-w-5xl">
             <ProductPreview t={t.preview} />
           </div>
         </Section>
@@ -289,24 +309,17 @@ export function Landing({ locale }: { locale: Locale }) {
           id="features"
           title={t.features.title}
           subtitle={t.features.subtitle}
-          dark
-          className="bg-ink-900 bg-grid"
+          align="left"
         >
-          <ul className="grid gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {t.features.items.map((f, i) => (
               <li
                 key={f.title}
-                className="rounded-card border border-ink-700 bg-ink-800/60 p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow-pop"
+                className="group rounded-2xl border border-brand-100 bg-white p-6 shadow-card transition hover:border-brand-300 hover:shadow-pop"
               >
-                <span className="text-xs font-semibold tabular-nums text-brand-300">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <h3 className="mt-1 text-base font-semibold text-white">
-                  {f.title}
-                </h3>
-                <p className="mt-1.5 text-sm leading-relaxed text-ink-300">
-                  {f.body}
-                </p>
+                <FeatureIcon index={i} />
+                <h3 className="mt-5 text-lg font-semibold text-ink-900">{f.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-ink-600">{f.body}</p>
               </li>
             ))}
           </ul>
@@ -317,19 +330,19 @@ export function Landing({ locale }: { locale: Locale }) {
           id="how"
           title={t.how.title}
           subtitle={t.how.subtitle}
-          className="bg-surface"
+          tone="mint"
         >
-          <ol className="mx-auto grid max-w-5xl gap-6 md:grid-cols-5">
+          <ol className="mx-auto grid max-w-6xl gap-5 md:grid-cols-5">
             {t.how.steps.map((s, i) => (
-              <li key={s.title} className="relative">
+              <li key={s.title} className="relative rounded-2xl border border-brand-100 bg-white p-5 shadow-card">
                 <div className="flex items-center">
-                  <span className="relative z-10 grid size-9 shrink-0 place-items-center rounded-full bg-brand-gradient text-sm font-semibold text-white shadow-card">
+                  <span className="relative z-10 grid size-10 shrink-0 place-items-center rounded-full bg-brand-gradient text-sm font-semibold text-white shadow-card ring-4 ring-brand-50">
                     {i + 1}
                   </span>
                   {i < t.how.steps.length - 1 && (
                     <div
                       aria-hidden="true"
-                      className="hidden h-px flex-1 bg-brand-200 md:block"
+                      className="-mr-9 hidden h-px flex-1 bg-brand-200 md:block"
                     />
                   )}
                 </div>
@@ -348,8 +361,8 @@ export function Landing({ locale }: { locale: Locale }) {
         <Section
           title={t.offline.title}
           subtitle={t.offline.subtitle}
-          dark
-          className="bg-brand-900 bg-grid-light"
+          tone="dark"
+          className="clip-slant-top"
         >
           <div className="grid gap-5 md:grid-cols-3">
             {[
@@ -371,7 +384,7 @@ export function Landing({ locale }: { locale: Locale }) {
             ].map((col) => (
               <div
                 key={col.title}
-                className="rounded-card border border-brand-700/60 bg-brand-800/50 p-5 shadow-card"
+                className="rounded-2xl border border-white/15 bg-white/[0.06] p-6 shadow-card backdrop-blur-sm"
               >
                 <h3 className="text-[15px] font-semibold text-white">
                   {col.title}
@@ -394,7 +407,6 @@ export function Landing({ locale }: { locale: Locale }) {
           id="pricing"
           title={t.pricing.title}
           subtitle={t.pricing.subtitle}
-          className="bg-surface"
         >
           <Suspense fallback={<PricingSkeleton />}>
             <PricingSection locale={locale} />
@@ -405,11 +417,11 @@ export function Landing({ locale }: { locale: Locale }) {
         <Section
           title={t.trust.title}
           subtitle={t.trust.subtitle}
-          className="bg-canvas"
+          tone="mint"
         >
-          <ul className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {t.trust.items.map((it) => (
-              <li key={it.title} className="flex gap-3">
+              <li key={it.title} className="flex gap-3 rounded-2xl border border-brand-100 bg-white p-5 shadow-card">
                 <Check tone="brand" />
                 <div>
                   <h3 className="text-[15px] font-semibold text-ink-900">
@@ -426,12 +438,12 @@ export function Landing({ locale }: { locale: Locale }) {
 
         {/* Testimonials render only when real, permissioned content exists. */}
         {TESTIMONIALS.length > 0 ? (
-          <Section title="Testimonials" className="bg-surface">
+          <Section title="Testimonials">
             <ul className="grid gap-5 md:grid-cols-3">
               {TESTIMONIALS.map((q) => (
                 <li
                   key={q.name}
-                  className="rounded-card border border-line bg-surface p-5 shadow-card"
+                  className="rounded-2xl border border-brand-100 bg-surface p-6 shadow-card"
                 >
                   <blockquote className="text-sm leading-relaxed text-ink-700">
                     &ldquo;{q.quote}&rdquo;
@@ -447,12 +459,12 @@ export function Landing({ locale }: { locale: Locale }) {
             </ul>
           </Section>
         ) : (
-          <Section title={t.benefits.title} className="bg-surface">
+          <Section title={t.benefits.title}>
             <ul className="grid gap-6 md:grid-cols-3">
               {t.benefits.items.map((b) => (
                 <li
                   key={b.title}
-                  className="rounded-card border border-line bg-surface p-6 shadow-card transition hover:-translate-y-0.5 hover:shadow-pop"
+                  className="rounded-2xl border border-brand-100 bg-gradient-to-b from-white to-brand-50/60 p-7 shadow-card transition hover:border-brand-300 hover:shadow-pop"
                 >
                   <h3 className="text-base font-semibold text-ink-900">
                     {b.title}
@@ -467,16 +479,16 @@ export function Landing({ locale }: { locale: Locale }) {
         )}
 
         {/* FAQ */}
-        <Section id="faq" title={t.faq.title} tint>
-          <div className="mx-auto max-w-3xl divide-y divide-line rounded-card border border-line bg-surface shadow-card">
+        <Section id="faq" title={t.faq.title} tone="mint">
+          <div className="mx-auto max-w-3xl divide-y divide-brand-100 rounded-2xl border border-brand-100 bg-surface shadow-card">
             {t.faq.items.map((f) => (
-              <details key={f.q} className="group px-5 py-4">
+              <details key={f.q} className="group px-6 py-5">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[15px] font-medium text-ink-900 [&::-webkit-details-marker]:hidden">
                   {f.q}
                   <svg
                     aria-hidden="true"
                     viewBox="0 0 20 20"
-                    className="size-4 shrink-0 text-ink-500 transition group-open:rotate-180"
+                    className="size-4 shrink-0 text-brand-600 transition group-open:rotate-180"
                     fill="currentColor"
                   >
                     <path d="M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4Z" />
@@ -491,23 +503,23 @@ export function Landing({ locale }: { locale: Locale }) {
         </Section>
 
         {/* Final CTA */}
-        <section className="bg-cta-gradient bg-grid-light py-16 text-center">
-          <div className="mx-auto max-w-2xl px-4">
-            <h2 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-              {t.cta.title}
-            </h2>
-            <p className="mt-3 text-brand-100">{t.cta.subtitle}</p>
-            <Link
-              href={signUp}
-              className="mt-7 inline-flex h-12 items-center rounded-control border border-white/30 bg-white/10 px-6 text-base font-medium text-white backdrop-blur-sm transition hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-            >
-              {t.cta.button}
-            </Link>
+        <section className="bg-surface px-4 pb-16 pt-4 sm:px-6 sm:pb-24">
+          <div className="relative mx-auto max-w-6xl overflow-hidden rounded-3xl bg-night px-6 py-14 text-center shadow-[0_30px_70px_-30px_rgb(8_63_57/0.9)] sm:px-12 sm:py-20">
+            <div aria-hidden="true" className="bg-grid-fine pointer-events-none absolute inset-0" />
+            <div className="relative mx-auto max-w-2xl">
+              <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                {t.cta.title}
+              </h2>
+              <p className="mt-4 text-lg text-brand-100">{t.cta.subtitle}</p>
+              <Link href={signUp} className={`${primaryBtn} mt-9`}>
+                {t.cta.button}
+              </Link>
+            </div>
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-ink-800 bg-ink-950">
+      <footer className="border-t border-white/10 bg-ink-950">
         <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-4">
           <div className="md:col-span-2">
             <Logo white />
@@ -515,7 +527,7 @@ export function Landing({ locale }: { locale: Locale }) {
               {t.footer.tagline}
             </p>
             <div className="mt-4">
-              <LanguageSwitcher current={locale} label={t.nav.language} />
+              <LanguageSwitcher current={locale} label={t.nav.language} tone="dark" />
             </div>
           </div>
           <nav aria-label={t.footer.product}>
