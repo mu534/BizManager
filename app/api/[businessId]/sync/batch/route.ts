@@ -219,6 +219,8 @@ async function processSaleOperation(
     items: payload.items,
     discountAmount: payload.discountAmount ?? "0",
     accountId: payload.accountId,
+    customerId: payload.customerId,
+    creditAmountMinor: payload.creditAmountMinor ?? 0,
     notes: payload.notes,
     syncOperationId: op.syncOperationId,
   };

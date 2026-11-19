@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { resolveContext } from "@server/auth/resolve-context";
 import { listAccounts } from "@server/services/financial.service";
+import { listCustomers } from "@server/services/customer.service";
 import { prisma } from "@server/db/prisma";
 import { POSClient } from "./pos-client";
 import { getCurrentBranch } from "@server/branch/current-branch";
@@ -30,6 +31,9 @@ export default async function SellPage({
   ]);
 
   const currency = business?.currency ?? "ETB";
+  // Selling on credit is for owners and managers; staff never see the option.
+  const canSellOnCredit = ctx.role === "OWNER" || ctx.role === "MANAGER";
+  const customers = canSellOnCredit ? await listCustomers(ctx) : [];
 
   return (
     <div className="space-y-4">
@@ -46,6 +50,8 @@ export default async function SellPage({
         currency={currency}
         accounts={accounts.map((a) => ({ id: a.id, name: a.name, type: a.type, balance: a.currentBalance }))}
         canOverridePrice={ctx.role === "OWNER" || ctx.role === "MANAGER"}
+        canSellOnCredit={canSellOnCredit}
+        customers={customers.map((c) => ({ id: c.id, name: c.name, owedMinor: c.owedMinor }))}
       />
     </div>
   );
