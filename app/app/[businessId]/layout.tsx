@@ -6,6 +6,7 @@ import { getBusinessesForUser, requireBusinessMembership } from "@server/service
 import { AppShell } from "@components/layout/app-shell";
 import { visibleGroups, serializeGroups } from "@components/layout/nav-config";
 import { SubscriptionBanner } from "@components/billing/subscription-banner";
+import { VerifyEmailBanner } from "@components/auth/verify-email-banner";
 import { UserRole } from "@shared/types/auth.types";
 import { hasFinancialReportAccess } from "@shared/team-rules";
 import { listAccessibleBranches } from "@server/services/branch-access.service";
@@ -76,6 +77,7 @@ export default async function BusinessLayout({
       businesses={businessOptions}
       groups={groups}
     >
+      <VerifyEmailBanner />
       <SubscriptionBanner businessId={businessId} isOwner={membership.role === UserRole.OWNER} />
       {children}
     </AppShell>
