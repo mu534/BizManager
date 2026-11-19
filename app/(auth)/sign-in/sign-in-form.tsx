@@ -63,6 +63,11 @@ export default function SignInForm({ locale, t, languageLabel }: { locale: Local
         <Field label={t.password} htmlFor="password" required>
           <Input id="password" name="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={loading} required />
         </Field>
+        <div className="-mt-1 text-right">
+          <Link href={`/forgot-password?lang=${locale}`} className="text-sm font-medium text-brand-700 hover:underline">
+            {t.forgotLink}
+          </Link>
+        </div>
         <Button type="submit" loading={loading} className="w-full">
           {loading ? t.signingIn : t.signIn}
         </Button>
