@@ -38,3 +38,19 @@ export function authErrorMessage(err: unknown, t: Dictionary["auth"]): string {
       return t.failed;
   }
 }
+
+/**
+ * Outcome of asking Firebase to send a password-reset email.
+ *
+ * An unknown email is reported as success on purpose: the page must not reveal
+ * which addresses have accounts. Every other failure gets a translated message.
+ */
+export function resetRequestOutcome(
+  err: unknown,
+  t: Dictionary["auth"],
+): { ok: true } | { ok: false; message: string } {
+  const code =
+    typeof err === "object" && err !== null && "code" in err ? String((err as { code?: unknown }).code) : "";
+  if (code === "auth/user-not-found") return { ok: true };
+  return { ok: false, message: authErrorMessage(err, t) };
+}

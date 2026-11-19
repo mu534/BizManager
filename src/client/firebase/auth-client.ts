@@ -23,6 +23,9 @@ import {
   GoogleAuthProvider,
   signOut as firebaseSignOut,
   updateProfile,
+  sendPasswordResetEmail,
+  sendEmailVerification,
+  onAuthStateChanged,
   type UserCredential,
 } from "firebase/auth";
 import { getFirebaseApp } from "./firebase-client";
@@ -87,6 +90,9 @@ export async function signUpWithEmail(
     password,
   );
   await updateProfile(credential.user, { displayName: name });
+  // Ask the new user to confirm their email. Never blocks sign-up: they can
+  // resend it later from the banner inside the app.
+  await sendEmailVerification(credential.user).catch(() => undefined);
   const idToken = await credential.user.getIdToken(/* forceRefresh */ true);
   await createServerSession(idToken);
 }
@@ -125,4 +131,49 @@ export async function signOut(): Promise<void> {
   await fetch("/api/auth/sign-out", { method: "POST" });
   // Then sign out of Firebase client-side.
   await firebaseSignOut(getFirebaseAuth());
+}
+
+/**
+ * Email a password-reset link. Resolves even for unknown addresses (Firebase may
+ * report auth/user-not-found); callers map errors with resetRequestOutcome().
+ */
+export async function sendPasswordReset(email: string): Promise<void> {
+  await sendPasswordResetEmail(getFirebaseAuth(), email);
+}
+
+export interface EmailVerificationState {
+  /** True for a signed-in email/password user whose address is not confirmed yet. */
+  needsVerification: boolean;
+  email: string | null;
+}
+
+/**
+ * Watch the signed-in Firebase user. Google accounts are already verified, so
+ * only email/password users are reported as needing verification. Returns an
+ * unsubscribe function. Silent if Firebase is not configured.
+ */
+export function watchEmailVerification(onChange: (s: EmailVerificationState) => void): () => void {
+  try {
+    return onAuthStateChanged(getFirebaseAuth(), (user) => {
+      const usesPassword = !!user?.providerData.some((p) => p.providerId === "password");
+      onChange({ needsVerification: !!user && usesPassword && !user.emailVerified, email: user?.email ?? null });
+    });
+  } catch {
+    return () => undefined;
+  }
+}
+
+/** Send the verification email again to the signed-in user. */
+export async function resendVerificationEmail(): Promise<void> {
+  const user = getFirebaseAuth().currentUser;
+  if (!user) throw new Error("NOT_SIGNED_IN");
+  await sendEmailVerification(user);
+}
+
+/** Re-read the user from Firebase and report whether the email is now confirmed. */
+export async function refreshEmailVerified(): Promise<boolean> {
+  const user = getFirebaseAuth().currentUser;
+  if (!user) return false;
+  await user.reload();
+  return user.emailVerified;
 }
