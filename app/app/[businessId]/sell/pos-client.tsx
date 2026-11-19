@@ -38,6 +38,9 @@ interface POSClientProps {
   currency: string;
   accounts: Account[];
   canOverridePrice: boolean;
+  /** Owners and managers may put part or all of a sale on a customer's tab. */
+  canSellOnCredit: boolean;
+  customers: { id: string; name: string; owedMinor: number }[];
 }
 
 type POSState = "cart" | "success";
@@ -64,7 +67,7 @@ function SyncStatusBadge({ status }: { status: SyncStatus }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function POSClient({ businessId, branchId, currency, accounts, canOverridePrice }: POSClientProps) {
+export function POSClient({ businessId, branchId, currency, accounts, canOverridePrice, canSellOnCredit, customers }: POSClientProps) {
   const { isOffline } = useOfflineStatus();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -72,6 +75,9 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
   const [cart, setCart] = useState<CartItem[]>([]);
   const [saleDiscount, setSaleDiscount] = useState("0");
   const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id ?? "");
+  const [onCredit, setOnCredit] = useState(false);
+  const [customerId, setCustomerId] = useState("");
+  const [paidNow, setPaidNow] = useState("0");
   const [state, setState] = useState<POSState>("cart");
   const [lastSaleSyncStatus, setLastSaleSyncStatus] = useState<SyncStatus>("pending");
   const [lastSaleFinalTotal, setLastSaleFinalTotal] = useState(0);
@@ -246,13 +252,28 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
   );
   const finalTotal = Math.max(0, Money.subtract(subtotal, saleLevelDiscount));
 
+  // Pay later: what is paid now goes to an account; the rest goes on the tab.
+  const paidNowMinor = onCredit
+    ? Math.min(finalTotal, Math.max(0, Money.fromMajorUnits(parseFloat(paidNow) || 0, currency)))
+    : finalTotal;
+  const creditMinor = onCredit ? finalTotal - paidNowMinor : 0;
+  const needsAccount = paidNowMinor > 0;
+
   // Offline-first sale completion.
   async function handleCompleteSale() {
     if (cart.length === 0) {
       setError("Add at least one product.");
       return;
     }
-    if (!selectedAccountId) {
+    if (onCredit && !customerId) {
+      setError("Choose the customer who will pay later.");
+      return;
+    }
+    if (onCredit && creditMinor <= 0) {
+      setError("Nothing is left unpaid. Turn off “Pay later” to take full payment.");
+      return;
+    }
+    if (needsAccount && !selectedAccountId) {
       setError("Select a payment account.");
       return;
     }
@@ -309,7 +330,8 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
             discountAmount: Money.toDecimalString(i.discountAmount, currency),
           })),
           discountAmount: Money.toDecimalString(saleLevelDiscount, currency),
-          accountId: selectedAccountId,
+          ...(needsAccount ? { accountId: selectedAccountId } : {}),
+          ...(onCredit ? { customerId, creditAmountMinor: creditMinor } : {}),
           notes: null,
           branchId,
         },
@@ -321,6 +343,9 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
       setLastSaleFinalTotal(finalTotal);
       setCart([]);
       setSaleDiscount("0");
+      setOnCredit(false);
+      setCustomerId("");
+      setPaidNow("0");
       setState("success");
 
       // 3. If online, trigger sync immediately.
@@ -572,7 +597,74 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
               </div>
             </div>
 
+            {/* Pay later (sale on a customer's tab) */}
+            {canSellOnCredit && (
+              <div className="rounded-md border border-gray-200 p-3 space-y-3">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-800">
+                  <input
+                    type="checkbox"
+                    checked={onCredit}
+                    onChange={(e) => setOnCredit(e.target.checked)}
+                  />
+                  Customer pays later (on credit)
+                </label>
+                {onCredit && (
+                  <>
+                    {customers.length === 0 ? (
+                      <p className="text-sm text-gray-600">
+                        No customers yet.{" "}
+                        <a className="text-blue-700 underline" href={`/app/${businessId}/customers/new`}>
+                          Add a customer
+                        </a>{" "}
+                        first, then come back to this sale.
+                      </p>
+                    ) : (
+                      <div>
+                        <label htmlFor="creditCustomer" className="block text-sm font-medium text-gray-700 mb-1">
+                          Customer
+                        </label>
+                        <select
+                          id="creditCustomer"
+                          value={customerId}
+                          onChange={(e) => setCustomerId(e.target.value)}
+                          className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                          <option value="">Choose a customer…</option>
+                          {customers.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                              {c.owedMinor > 0 ? ` — owes ${fmt(c.owedMinor)}` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <div>
+                      <label htmlFor="paidNow" className="block text-sm font-medium text-gray-700 mb-1">
+                        Paid now
+                      </label>
+                      <input
+                        id="paidNow"
+                        type="number"
+                        inputMode="decimal"
+                        step="0.01"
+                        min="0"
+                        value={paidNow}
+                        onChange={(e) => setPaidNow(e.target.value)}
+                        className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="flex justify-between text-sm font-semibold text-gray-900">
+                      <span>Goes on their tab</span>
+                      <span>{fmt(creditMinor)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Payment account */}
+            {needsAccount && (
             <div>
               <label
                 htmlFor="paymentAccount"
@@ -593,6 +685,7 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
                 ))}
               </select>
             </div>
+            )}
 
             {/* Complete sale — fixed bottom on mobile */}
             <div className="fixed bottom-0 left-0 right-0 p-3 bg-white border-t border-gray-200 lg:relative lg:bottom-auto lg:left-auto lg:right-auto lg:p-0 lg:bg-transparent lg:border-0 z-10">
