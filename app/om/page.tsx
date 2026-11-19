@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Landing } from "@components/marketing/landing";
+import { StructuredData } from "@components/marketing/structured-data";
 import { getDictionary } from "@shared/i18n";
 
 const t = getDictionary("om");
@@ -12,5 +13,10 @@ export const metadata: Metadata = {
 
 /** Public marketing homepage (Afaan Oromoo). */
 export default function HomePageOm() {
-  return <Landing locale="om" />;
+  return (
+    <>
+      <StructuredData locale="om" />
+      <Landing locale="om" />
+    </>
+  );
 }

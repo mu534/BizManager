@@ -1,5 +1,30 @@
 import type { NextConfig } from "next";
 
+const isProd = process.env.NODE_ENV === "production";
+
+/**
+ * Content-Security-Policy, sent in REPORT-ONLY mode first: the browser logs
+ * anything it would block (DevTools console) but breaks nothing. Review the
+ * console on staging, then rename the header to "Content-Security-Policy" to
+ * enforce it. 'unsafe-inline' is needed by Next.js inline bootstrap scripts
+ * until nonces are adopted.
+ */
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' https://apis.google.com https://www.gstatic.com",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https://*.googleusercontent.com",
+  "font-src 'self' data:",
+  "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebaseapp.com",
+  "frame-src https://accounts.google.com https://*.firebaseapp.com",
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
 const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
@@ -20,6 +45,15 @@ const nextConfig: NextConfig = {
           // same-origin blocks cross-origin popups from reading window.closed.
           // Override this on auth pages below.
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          // Hardware features the app never uses stay off, even if a script asks.
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
+          // Production only: HSTS on http://localhost would pin the dev machine to https.
+          ...(isProd
+            ? [
+                { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+                { key: "Content-Security-Policy-Report-Only", value: CSP },
+              ]
+            : []),
         ],
       },
       // Auth pages use Google sign-in popups — COOP must allow popup messaging.

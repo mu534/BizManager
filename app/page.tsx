@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Landing } from "@components/marketing/landing";
+import { StructuredData } from "@components/marketing/structured-data";
 import { getDictionary } from "@shared/i18n";
 
 const t = getDictionary("en");
@@ -12,5 +13,10 @@ export const metadata: Metadata = {
 
 /** Public marketing homepage (English). Afaan Oromo lives at /om. */
 export default function HomePage() {
-  return <Landing locale="en" />;
+  return (
+    <>
+      <StructuredData locale="en" />
+      <Landing locale="en" />
+    </>
+  );
 }

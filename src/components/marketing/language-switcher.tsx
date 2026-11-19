@@ -4,12 +4,7 @@ import Link from "next/link";
 import { LOCALES, LOCALE_LABELS, homePathFor, type Locale } from "@shared/i18n/locales";
 import { rememberLocale } from "@client/locale-cookie";
 
-/**
- * Language switcher. Each option is a real link to the localized page (works
- * without JavaScript, is indexable and shareable). Clicking also remembers the
- * choice in a cookie so the sign-in / sign-up pages, which have no locale in
- * their URL, open in the same language.
- */
+
 export function LanguageSwitcher({
   current,
   label,
