@@ -123,6 +123,7 @@ enum FinancialTransactionType {
   MANUAL_CREDIT   // inflow  — opening balance, manual adjustment
   MANUAL_DEBIT    // outflow — manual adjustment
   REFUND          // outflow — for a sale return
+  DEBT_REPAYMENT  // inflow — a customer paying off credit; not new revenue
 }
 
 // ── Expenses ─────────────────────────────────────────────────
