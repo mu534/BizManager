@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Dummy values so `next build` can run. Nothing here is a real secret and
+      # the build does not connect to a database or Firebase.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      SESSION_SECRET: ci-only-session-secret-0123456789abcdef0123456789
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_FIREBASE_API_KEY: ci
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ci.firebaseapp.com
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: ci
+      NEXT_PUBLIC_FIREBASE_APP_ID: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # postinstall runs `prisma generate`, which the type-check and tests need.
+      - run: npm ci
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Unit tests
+        run: npm test
+
+      # The repository currently has a handful of lint errors that pre-date CI.
+      # Fix them, then delete the next line so lint blocks merges.
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build
+        run: npm run build
+
+  # Applies every migration to an empty database, to catch broken SQL early.
+  migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma migrate deploy
