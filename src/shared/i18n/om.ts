@@ -233,6 +233,13 @@ export const omDictionary: Dictionary = {
     or: "ykn",
     passwordHint: "xiqqaatu qubee/lakkoofsa 8",
     forgotNote: "Imeelii ittiin galmaa'te fayyadami.",
+    forgotLink: "Jecha iccitii irraanfatte?",
+    forgotTitle: "Jecha iccitii kee haaromsi",
+    forgotIntro: "Imeelii ittiin galmaa'te galchi. Jecha iccitii haaraa filachuuf geessituu sif ergina.",
+    sendResetLink: "Geessituu haaromsaa ergi",
+    sendingReset: "Ergaa jira…",
+    resetSent: "Yoo imeelii kanaan herregi jiraate, geessituun haaromsaa karaa irra jira. Bakka ergaa fi spam kee ilaali.",
+    backToSignIn: "Gara seenuutti deebi'i",
     unavailable: "Yeroo ammaa seenuun hin danda'amu. Booda yaali.",
   },
 };

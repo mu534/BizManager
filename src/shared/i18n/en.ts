@@ -231,6 +231,13 @@ const en = {
     or: "or",
     passwordHint: "min. 8 characters",
     forgotNote: "Use the email you registered with.",
+    forgotLink: "Forgot password?",
+    forgotTitle: "Reset your password",
+    forgotIntro: "Enter the email you registered with. We will send you a link to choose a new password.",
+    sendResetLink: "Send reset link",
+    sendingReset: "Sending…",
+    resetSent: "If an account exists for that email, a reset link is on its way. Check your inbox and your spam folder.",
+    backToSignIn: "Back to sign in",
     unavailable: "Sign-in is not available right now. Please try again later.",
   },
 } as const;
