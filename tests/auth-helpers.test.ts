@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { safeNextPath } from "@shared/safe-redirect";
-import { authErrorMessage } from "@shared/auth-errors";
+import { authErrorMessage, resetRequestOutcome } from "@shared/auth-errors";
 import { getDictionary } from "@shared/i18n";
 
 describe("safeNextPath (open-redirect guard)", () => {
@@ -58,5 +58,22 @@ describe("authErrorMessage", () => {
     expect(authErrorMessage(new Error("Firebase: secret internal detail"), en)).toBe(en.failed);
     expect(authErrorMessage("boom", en)).toBe(en.failed);
     expect(authErrorMessage(new TypeError("FIREBASE_CONFIG_MISSING"), en)).toBe(en.unavailable);
+  });
+});
+
+describe("resetRequestOutcome (password reset privacy)", () => {
+  const t = getDictionary("en").auth;
+  it("treats an unknown email as success so accounts are not revealed", () => {
+    expect(resetRequestOutcome({ code: "auth/user-not-found" }, t)).toEqual({ ok: true });
+  });
+  it("returns a translated message for other failures", () => {
+    expect(resetRequestOutcome({ code: "auth/invalid-email" }, t)).toEqual({ ok: false, message: t.invalidEmail });
+    expect(resetRequestOutcome({ code: "auth/too-many-requests" }, t)).toEqual({ ok: false, message: t.tooMany });
+    expect(resetRequestOutcome({ code: "auth/network-request-failed" }, t)).toEqual({ ok: false, message: t.network });
+  });
+  it("never leaks raw error text", () => {
+    const r = resetRequestOutcome(new Error("secret internals"), t);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toBe(t.failed);
   });
 });
