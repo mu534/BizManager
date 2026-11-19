@@ -20,7 +20,7 @@ cp .env.example .env.local
 # 3. Create and seed the database
 # Start PostgreSQL, then:
 npx prisma migrate deploy   # Applies all committed migrations
-npx tsx prisma/seed-plans.ts # Creates the plans (BASIC, PRO, BUSINESS) if missing (run once after Phase 11 migration)
+npx prisma db seed          # Creates the plans (BASIC, PRO, BUSINESS) if missing; idempotent
 npx prisma generate         # Regenerate Prisma client
 
 # 4. Verify Firebase
@@ -137,7 +137,7 @@ BizManager collects subscription payments **manually** (Telebirr / bank transfer
 There is no payment gateway and no automatic verification.
 
 1. **Apply the migration** `20261018200000_manual_subscription_payments`
-   (`npx prisma migrate deploy`), then run `npx tsx prisma/seed-plans.ts` to create the
+   (`npx prisma migrate deploy`), then run `npx prisma db seed` to create the
    BASIC / PRO / BUSINESS plan rows. The migration renames the previous
    STARTER / BUSINESS / PRO plans in place (old BUSINESS → PRO, old PRO →
    BUSINESS, STARTER → BASIC) so existing subscriptions keep their plan link.
@@ -174,3 +174,18 @@ There is no payment gateway and no automatic verification.
   sales, expenses or reports, so there is no such access to log; if one is ever added it
   must be owner-granted, time-limited and written to the platform audit log.
 - **Branches** need no extra deployment steps (branch access rows already existed).
+
+
+## Release checklist (security and SEO)
+
+- Set `NEXT_PUBLIC_APP_URL` to the real https origin. `sitemap.xml`, `robots.txt`,
+  the share image and canonical links are all built from it.
+- HSTS and a **report-only** Content-Security-Policy are sent in production. On staging,
+  open the app and the sign-in page with DevTools open and check the console for
+  "Content Security Policy" violations (Google sign-in, uploads, offline sync). When there
+  are none, rename the `Content-Security-Policy-Report-Only` header in `next.config.ts`
+  to `Content-Security-Policy` to enforce it.
+- In the Firebase console (Authentication): confirm the production domain is under
+  *Authorized domains*, and review the password-reset and verification email templates.
+- Continuous integration (`.github/workflows/ci.yml`) runs type-check, tests and a build on
+  every pull request, and applies all migrations to an empty PostgreSQL database.

@@ -46,11 +46,28 @@ per-business settings; ETB is the default.
   clear distinction between *offline*, *paused by subscription* and *needs attention*,
   and a review page (`/app/{id}/sync`) to retry or, after confirmation, set aside items.
 
-**Not built yet (the website marks these "Coming soon")**
+- **Customer credit (ዱቤ):** owners and managers can sell on credit from the till, put part
+  or all of a sale on a customer's tab, and record payments into a cash, mobile-money or
+  bank account (oldest unpaid sale first). A return on a sale with unpaid credit cancels
+  the unpaid amount before any cash is refunded. Pages: `/app/{id}/customers`.
+- CSV export of the sales, profit, expenses and inventory reports
+  (`/api/{id}/reports/{sales|profit|expenses|inventory}/export`).
+- Support tickets: businesses open and follow tickets (`/app/{id}/support`); admins
+  answer them in the console (`/admin/support`).
+- Password reset (`/forgot-password`) and an email-verification reminder for
+  email/password accounts. The reminder never blocks the app.
+- SEO basics: `robots.txt`, `sitemap.xml`, a share image, and schema.org markup on the
+  public pages.
 
-- Exports other than the product report (sales, profit, expenses, inventory).
-- Support-ticket workflow in the console.
+**Not built yet**
+
+- Supplier records and purchase orders.
+- Team invitation emails (see simplifications below).
+- Push notifications (for example low-stock alerts).
+- Automatic Telebirr / bank payment confirmation; payments are still reviewed by an admin.
 - Barcode scanning and tax calculation are deliberately out of scope.
+- In-app screens are English only; the public website and the auth pages are English and
+  Afaan Oromo.
 
 **Known simplifications**
 
@@ -58,6 +75,9 @@ per-business settings; ETB is the default.
   depreciation or non-operating items.
 - Sale returns restock at the original sale's cost and do not re-average cost.
 - Team members must already have an account; no invitation emails are sent.
+- Customer credit: a payment larger than what the customer owes is rejected (there is no
+  customer-balance credit to spend at the till yet).
+- Content-Security-Policy is sent in report-only mode until it has been checked on staging.
 - Branches: money accounts (Cash, Telebirr, bank) are shared by the whole business, not
   split per branch. Switching branch needs a connection; the offline product list on a
   device reflects the branch it last loaded. A closed branch keeps its history and
