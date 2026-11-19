@@ -51,11 +51,23 @@ export const createSaleSchema = z
     /** Split-payment array — required when accountId is absent */
     payments: z.array(splitPaymentInputSchema).min(1).optional(),
     notes: z.string().max(500).optional(),
+    /** Customer whose tab receives the unpaid part of the sale (sale on credit). */
+    customerId: z.string().uuid("Invalid customer").optional(),
+    /** Unpaid part of the sale, integer minor units. 0 = fully paid now. */
+    creditAmountMinor: z.number().int().min(0).optional().default(0),
     /** Client-generated UUID for offline idempotency */
     syncOperationId: z.string().uuid().optional(),
   })
   .superRefine((data, ctx) => {
-    if (!data.payments && !data.accountId) {
+    if (data.creditAmountMinor > 0 && !data.customerId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Choose the customer for a sale on credit",
+        path: ["customerId"],
+      });
+    }
+    // A fully unpaid sale needs no payment account; anything paid now does.
+    if (!data.payments && !data.accountId && data.creditAmountMinor === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Either accountId or payments is required",

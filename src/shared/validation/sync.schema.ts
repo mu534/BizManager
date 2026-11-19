@@ -28,8 +28,12 @@ export const syncSalePayloadSchema = z.object({
       (v) => !isNaN(parseFloat(v)) && parseFloat(v) >= 0,
       "Invalid discount",
     ),
-  /** Payment account UUID */
-  accountId: z.string().uuid("Invalid payment account"),
+  /** Payment account UUID (optional only when the whole sale is on credit) */
+  accountId: z.string().uuid("Invalid payment account").optional(),
+  /** Customer whose tab receives the unpaid part of the sale. */
+  customerId: z.string().uuid("Invalid customer").optional(),
+  /** Unpaid part of the sale in minor units. */
+  creditAmountMinor: z.number().int().min(0).optional(),
   notes: z.string().max(500).optional(),
   /**
    * branchId from the client payload.
