@@ -43,6 +43,12 @@ import {
   totalQuantityByProduct,
   type ProductPricing,
 } from "@shared/sale-math";
+import {
+  CreditRuleError,
+  resolveSalePayments,
+  splitReturnRefund,
+} from "@shared/credit-rules";
+import { recordCustomerDebt } from "@server/services/customer.service";
 import { businessDayKey, endOfBusinessDay, isDayKey, startOfBusinessDay } from "@shared/time";
 import type { TenantContext } from "@shared/types/auth.types";
 import type { CreateSaleInput, CreateReturnInput, SaleFilterInput } from "@shared/validation/sale.schema";
@@ -152,6 +158,10 @@ export async function createSale(
   input: CreateSaleInput,
 ): Promise<SaleWithDetails> {
   const branchId = input.branchId;
+  // Putting part of a sale on a customer's tab is a financial decision:
+  // owners and managers only.
+  const creditMinor = input.creditAmountMinor ?? 0;
+  if (creditMinor > 0) requireOwnerOrManager(ctx);
   // Verify tenancy BEFORE taking a lock so a hostile caller cannot hold locks
   // on another tenant's branch.
   await requireBranchInBusiness(ctx, branchId, { write: true });
@@ -217,20 +227,21 @@ export async function createSale(
           throw err;
         }
 
-        // Resolve payments — either split array or the single accountId shorthand.
-        const paymentsToProcess = input.payments ?? [
-          {
-            accountId: input.accountId!,
-            amountMinor: computed.finalTotal,
-            verificationStatus: "VERIFIED" as const,
-          },
-        ];
-
-        // Validate that the payment amounts sum to the sale total.
-        const paymentSum = paymentsToProcess.reduce((s, p) => s + p.amountMinor, 0);
-        if (paymentSum !== computed.finalTotal) {
-          throw appError.validationError("Payment amounts must sum to the sale total");
+        // Resolve how the total is settled: paid now (one or more accounts)
+        // and/or left on the customer's tab. Together they equal the total.
+        let resolved;
+        try {
+          resolved = resolveSalePayments({
+            finalTotal: computed.finalTotal,
+            creditMinor,
+            accountId: input.accountId,
+            payments: input.payments,
+          });
+        } catch (err) {
+          if (err instanceof CreditRuleError) throw appError.validationError(err.message);
+          throw err;
         }
+        const paymentsToProcess = resolved.payments;
 
         const sale = await tx.sale.create({
           data: {
@@ -291,14 +302,27 @@ export async function createSale(
         }
 
         // Record one Payment row per split entry.
-        await tx.payment.createMany({
-          data: paymentsToProcess.map((p) => ({
+        if (paymentsToProcess.length > 0) {
+          await tx.payment.createMany({
+            data: paymentsToProcess.map((p) => ({
+              saleId: sale.id,
+              accountId: p.accountId,
+              amount: p.amountMinor,
+              verificationStatus: p.verificationStatus,
+            })),
+          });
+        }
+
+        // The unpaid part goes on the customer's tab. Revenue is recognised on
+        // the sale; money only reaches an account when the customer pays.
+        if (resolved.creditMinor > 0 && input.customerId) {
+          await recordCustomerDebt(tx, ctx, {
+            customerId: input.customerId,
             saleId: sale.id,
-            accountId: p.accountId,
-            amount: p.amountMinor,
-            verificationStatus: p.verificationStatus,
-          })),
-        });
+            amountMinor: resolved.creditMinor,
+            operationId: `sale-debt:${sale.id}`,
+          });
+        }
 
         // Credit account balances — VERIFIED payments only.
         // Invariant: PENDING_VERIFICATION payments are recorded but never credited;
@@ -562,8 +586,29 @@ export async function createReturn(
         await incrementStock(tx, c.saleItem.productId, sale.branchId, c.quantity);
       }
 
+      // If part of this sale is still unpaid on a customer's tab, the return
+      // cancels that unpaid amount first; only the rest is paid back in money.
+      let cashRefund = totalRefund;
       if (totalRefund > 0) {
-        await debitAccount(tx, refundAccount.id, totalRefund, "REFUND", refundAccount.name, {
+        const debt = await tx.customerDebt.findFirst({
+          where: { saleId: sale.id, businessId: ctx.businessId },
+        });
+        if (debt && debt.outstandingMinor > 0) {
+          await lockKey(tx, `debt:${debt.id}`);
+          const fresh = await tx.customerDebt.findUniqueOrThrow({ where: { id: debt.id } });
+          const split = splitReturnRefund(totalRefund, fresh.outstandingMinor);
+          if (split.debtReductionMinor > 0) {
+            await tx.customerDebt.update({
+              where: { id: fresh.id },
+              data: { outstandingMinor: { decrement: split.debtReductionMinor } },
+            });
+          }
+          cashRefund = split.cashRefundMinor;
+        }
+      }
+
+      if (cashRefund > 0) {
+        await debitAccount(tx, refundAccount.id, cashRefund, "REFUND", refundAccount.name, {
           referenceId: saleReturn.id,
           referenceType: "SaleReturn",
         });

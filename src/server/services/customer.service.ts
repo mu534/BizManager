@@ -1,8 +1,11 @@
 import "server-only";
 import { prisma } from "@server/db/prisma";
 import { appError } from "@shared/errors";
-import { lockKey } from "@server/services/ledger";
+import { creditAccount, lockKey } from "@server/services/ledger";
 import type { Tx } from "@server/services/ledger";
+import { requireOwnerOrManager } from "@server/auth/permissions";
+import { assertSubscriptionActive } from "@server/services/subscription.service";
+import { CreditRuleError, allocateRepayment } from "@shared/credit-rules";
 import type { TenantContext } from "@shared/types/auth.types";
 import type {
   Customer,
@@ -332,5 +335,206 @@ export async function applyCustomerCredit(
         operationId: input.operationId,
       },
     });
+  });
+}
+
+
+// ─── Customer tab: list, detail, receiving payments ─────────
+
+export interface CustomerListItem {
+  id: string;
+  name: string;
+  phone: string | null;
+  owedMinor: number;
+  openDebts: number;
+}
+
+/** Customers with how much each one currently owes. Owner/manager only. */
+export async function listCustomers(
+  ctx: TenantContext,
+  opts: { search?: string } = {},
+): Promise<CustomerListItem[]> {
+  requireOwnerOrManager(ctx);
+  const q = opts.search?.trim();
+  const rows = await prisma.customer.findMany({
+    where: {
+      businessId: ctx.businessId,
+      ...(q
+        ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { phone: { contains: q } }] }
+        : {}),
+    },
+    orderBy: { name: "asc" },
+    take: 500,
+    include: { debts: { where: { outstandingMinor: { gt: 0 } }, select: { outstandingMinor: true } } },
+  });
+  return rows.map((c) => ({
+    id: c.id,
+    name: c.name,
+    phone: c.phone,
+    owedMinor: c.debts.reduce((sum, d) => sum + d.outstandingMinor, 0),
+    openDebts: c.debts.length,
+  }));
+}
+
+export interface CustomerDebtView {
+  id: string;
+  saleId: string;
+  receiptNumber: string | null;
+  originalMinor: number;
+  outstandingMinor: number;
+  /** Cancelled by returns rather than paid. */
+  returnedMinor: number;
+  createdAt: Date;
+}
+export interface CustomerRepaymentView {
+  id: string;
+  amountMinor: number;
+  paymentMethod: string;
+  notes: string | null;
+  createdAt: Date;
+}
+export interface CustomerDetail {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
+  owedMinor: number;
+  debts: CustomerDebtView[];
+  repayments: CustomerRepaymentView[];
+}
+
+export async function getCustomerDetail(ctx: TenantContext, customerId: string): Promise<CustomerDetail> {
+  requireOwnerOrManager(ctx);
+  const customer = await prisma.customer.findUnique({
+    where: { id: customerId },
+    include: {
+      debts: { orderBy: { createdAt: "desc" }, take: 200, include: { repayments: true } },
+      debtRepayments: { where: { verificationStatus: "VERIFIED" }, orderBy: { createdAt: "desc" }, take: 50 },
+    },
+  });
+  if (!customer || customer.businessId !== ctx.businessId) throw appError.notFound("Customer not found");
+
+  const sales = await prisma.sale.findMany({
+    where: { id: { in: customer.debts.map((d) => d.saleId) }, branch: { businessId: ctx.businessId } },
+    select: { id: true, receiptNumber: true },
+  });
+  const receipt = new Map(sales.map((x) => [x.id, x.receiptNumber] as const));
+
+  const debts: CustomerDebtView[] = customer.debts.map((d) => {
+    const paid = d.repayments
+      .filter((r) => r.verificationStatus === "VERIFIED")
+      .reduce((sum, r) => sum + r.amountMinor, 0);
+    return {
+      id: d.id,
+      saleId: d.saleId,
+      receiptNumber: receipt.get(d.saleId) ?? null,
+      originalMinor: d.originalAmountMinor,
+      outstandingMinor: d.outstandingMinor,
+      returnedMinor: Math.max(0, d.originalAmountMinor - d.outstandingMinor - paid),
+      createdAt: d.createdAt,
+    };
+  });
+  return {
+    id: customer.id,
+    name: customer.name,
+    phone: customer.phone,
+    email: customer.email,
+    notes: customer.notes,
+    owedMinor: debts.reduce((sum, d) => sum + d.outstandingMinor, 0),
+    debts,
+    repayments: customer.debtRepayments.map((r) => ({
+      id: r.id,
+      amountMinor: r.amountMinor,
+      paymentMethod: r.paymentMethod,
+      notes: r.notes,
+      createdAt: r.createdAt,
+    })),
+  };
+}
+
+/**
+ * Customer pays towards what they owe. The money lands in the chosen account
+ * (one ledger entry), and is applied to their oldest unpaid sales first.
+ * Idempotent on operationId. Paying more than is owed is rejected.
+ */
+export async function receiveCustomerPayment(
+  ctx: TenantContext,
+  input: { customerId: string; accountId: string; amountMinor: number; operationId: string; notes?: string },
+): Promise<{ appliedMinor: number; remainingMinor: number }> {
+  requireOwnerOrManager(ctx);
+  await assertSubscriptionActive(ctx);
+
+  return prisma.$transaction(async (tx) => {
+    await lockKey(tx, `customer-payment:${input.customerId}`);
+
+    const customer = await tx.customer.findUnique({ where: { id: input.customerId } });
+    if (!customer || customer.businessId !== ctx.businessId) throw appError.notFound("Customer not found");
+
+    const account = await tx.financialAccount.findUnique({ where: { id: input.accountId } });
+    if (!account || account.businessId !== ctx.businessId || account.status !== "ACTIVE") {
+      throw appError.invalidAccount("Payment account not found or inactive.");
+    }
+    const method =
+      account.type === "CASH" ? "CASH" : account.type === "MOBILE_MONEY" ? "TELEBIRR" : account.type === "BANK" ? "BANK" : null;
+    if (!method) throw appError.validationError("Choose a cash, mobile money or bank account.");
+
+    // Retry of a payment that already went through: report it, never apply twice.
+    const prior = await tx.customerDebtRepayment.findMany({
+      where: { operationId: { startsWith: `${input.operationId}:` }, businessId: ctx.businessId },
+    });
+    if (prior.length > 0) {
+      const open = await tx.customerDebt.aggregate({
+        where: { customerId: customer.id, outstandingMinor: { gt: 0 } },
+        _sum: { outstandingMinor: true },
+      });
+      return { appliedMinor: prior.reduce((sum, r) => sum + r.amountMinor, 0), remainingMinor: open._sum.outstandingMinor ?? 0 };
+    }
+
+    const debts = await tx.customerDebt.findMany({
+      where: { customerId: customer.id, businessId: ctx.businessId, outstandingMinor: { gt: 0 } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    for (const d of debts) await lockKey(tx, `debt:${d.id}`);
+    // Re-read under the locks so a concurrent payment or return is seen.
+    const fresh = await tx.customerDebt.findMany({
+      where: { id: { in: debts.map((d) => d.id) }, outstandingMinor: { gt: 0 } },
+    });
+
+    let plan;
+    try {
+      plan = allocateRepayment(fresh, input.amountMinor);
+    } catch (err) {
+      if (err instanceof CreditRuleError) throw appError.validationError(err.message);
+      throw err;
+    }
+
+    for (const part of plan) {
+      await tx.customerDebtRepayment.create({
+        data: {
+          businessId: ctx.businessId,
+          customerId: customer.id,
+          debtId: part.debtId,
+          amountMinor: part.amountMinor,
+          paymentMethod: method,
+          verificationStatus: "VERIFIED",
+          operationId: `${input.operationId}:${part.debtId}`,
+          notes: input.notes,
+        },
+      });
+      await tx.customerDebt.update({
+        where: { id: part.debtId },
+        data: { outstandingMinor: { decrement: part.amountMinor } },
+      });
+    }
+
+    await creditAccount(tx, account.id, input.amountMinor, "DEBT_REPAYMENT", {
+      referenceId: customer.id,
+      referenceType: "Customer",
+      notes: customer.name,
+    });
+
+    const owed = fresh.reduce((sum, d) => sum + d.outstandingMinor, 0);
+    return { appliedMinor: input.amountMinor, remainingMinor: owed - input.amountMinor };
   });
 }
