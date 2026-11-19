@@ -33,6 +33,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "Sell", items: [
     { label: "Point of sale", path: "/sell", icon: IconCart, match: (p, b) => p === `${b}/sell` },
     { label: "Sales history", path: "/sell/history", icon: IconReceipt, match: prefix("/sell/history") },
+    { label: "Customers", path: "/customers", icon: IconUsers, match: prefix("/customers"), requires: "manager" },
   ] },
   { label: "Stock", items: [
     { label: "Products", path: "/products", icon: IconTag, match: prefix("/products") },

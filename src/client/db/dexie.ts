@@ -123,7 +123,12 @@ export interface SyncSalePayload {
   items: SyncSaleItem[];
   /** Decimal string — e.g. "50.00". */
   discountAmount: string;
-  accountId: string;
+  /** Account that received what was paid now. Omitted when the whole sale is on credit. */
+  accountId?: string;
+  /** Customer whose tab receives the unpaid part (sale on credit). */
+  customerId?: string;
+  /** Unpaid part of the sale, integer minor units. */
+  creditAmountMinor?: number;
   notes: string | null;
   /** branchId passed to the server for resolveContext verification. */
   branchId: string;
