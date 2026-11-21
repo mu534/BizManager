@@ -66,6 +66,19 @@ export interface SalesReport {
   };
   daily: DailyPoint[];
   byAccount: { accountName: string; accountType: string; received: number; refunded: number; net: number }[];
+  /**
+   * Sales on credit. "Received" in byAccount is money taken at the till, so
+   * sales = received + credit given (before returns). Collected payments are
+   * shown separately because they are not new sales.
+   */
+  credit: {
+    /** Unpaid part of this period's sales, put on customers' tabs. */
+    given: number;
+    /** Customer payments received in this period (business-wide). */
+    collected: number;
+    /** What customers owe in total right now (business-wide). */
+    stillOwed: number;
+  };
 }
 
 export interface ProfitReport extends ProfitResult {
@@ -229,6 +242,37 @@ export async function getSalesReport(
     }),
   ]);
 
+  // Credit: the unpaid part of this period's sales, what was collected, what is still owed.
+  const periodRange = { gte: period.from, lte: period.to };
+  const [periodDebts, collectedAgg, owedAgg] = await Promise.all([
+    prisma.customerDebt.findMany({
+      where: { businessId: ctx.businessId, createdAt: periodRange },
+      select: { saleId: true, originalAmountMinor: true },
+    }),
+    prisma.customerDebtRepayment.aggregate({
+      where: { businessId: ctx.businessId, verificationStatus: "VERIFIED", createdAt: periodRange },
+      _sum: { amountMinor: true },
+    }),
+    prisma.customerDebt.aggregate({
+      where: { businessId: ctx.businessId, outstandingMinor: { gt: 0 } },
+      _sum: { outstandingMinor: true },
+    }),
+  ]);
+  const inScope =
+    periodDebts.length === 0
+      ? new Set<string>()
+      : new Set(
+          (
+            await prisma.sale.findMany({
+              where: { ...saleWhere, id: { in: periodDebts.map((d) => d.saleId) } },
+              select: { id: true },
+            })
+          ).map((s) => s.id),
+        );
+  const creditGiven = periodDebts
+    .filter((d) => inScope.has(d.saleId))
+    .reduce((sum, d) => sum + d.originalAmountMinor, 0);
+
   const accountIds = [
     ...new Set([
       ...received.map((r) => r.accountId),
@@ -258,6 +302,11 @@ export async function getSalesReport(
     },
     daily: f.daily,
     byAccount,
+    credit: {
+      given: creditGiven,
+      collected: collectedAgg._sum.amountMinor ?? 0,
+      stillOwed: owedAgg._sum.outstandingMinor ?? 0,
+    },
   };
 }
 
