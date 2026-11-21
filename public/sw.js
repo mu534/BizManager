@@ -102,3 +102,35 @@ self.addEventListener("message", (event) => {
     event.waitUntil(caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))));
   }
 });
+
+// ─── Push notifications (low-stock alerts) ────────────────────
+// The server sends a small JSON payload: { title, body, url, tag }.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = {};
+  }
+  const title = data.title || "BizManager";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || "",
+      tag: data.tag || undefined,
+      data: { url: typeof data.url === "string" && data.url.startsWith("/") ? data.url : "/app" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/app";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+      for (const w of windows) {
+        if (new URL(w.url).pathname === url && "focus" in w) return w.focus();
+      }
+      return self.clients.openWindow(url);
+    }),
+  );
+});

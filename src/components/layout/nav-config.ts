@@ -48,6 +48,7 @@ export const NAV_GROUPS: NavGroup[] = [
     { label: "Branches", path: "/settings/branches", icon: IconBox, match: prefix("/settings/branches"), requires: "owner" },
     { label: "Support", path: "/support", icon: IconSettings, match: prefix("/support") },
     { label: "Team", path: "/settings/team", icon: IconUsers, match: prefix("/settings/team"), requires: "owner" },
+    { label: "Notifications", path: "/settings/notifications", icon: IconSettings, match: prefix("/settings/notifications"), requires: "manager" },
     { label: "Plan & billing", path: "/settings/subscription", icon: IconSettings, match: prefix("/settings/subscription"), requires: "owner" },
   ] },
 ];
