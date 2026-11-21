@@ -86,17 +86,6 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fmt = (n: number) => Money.format(n, currency);
 
-  // Start background sync processor on mount.
-  useEffect(() => {
-    const cleanup = startSyncProcessor(businessId);
-
-    // Seed local products cache while online.
-    void seedLocalProducts();
-
-    return cleanup;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [businessId, branchId]);
-
   // Seed the local products cache for offline search.
   async function seedLocalProducts() {
     if (isOffline) return;
@@ -125,6 +114,17 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
       // Non-critical — offline search will use whatever is already cached.
     }
   }
+
+  // Start background sync processor on mount.
+  useEffect(() => {
+    const cleanup = startSyncProcessor(businessId);
+
+    // Seed local products cache while online.
+    void seedLocalProducts();
+
+    return cleanup;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessId, branchId]);
 
   // Debounced product search — network first, fall back to local cache.
   const handleSearch = useCallback(
@@ -284,7 +284,7 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
       const syncOperationId = crypto.randomUUID();
       const localSaleId = crypto.randomUUID();
       const clientId = getClientId();
-      const now = Date.now();
+      const now = new Date().getTime();
 
       // Convert cart items to LocalSaleItems (integer amounts).
       const localItems: LocalSaleItem[] = cart.map((i) => ({
