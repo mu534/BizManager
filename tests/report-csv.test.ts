@@ -37,12 +37,25 @@ describe("sales CSV", () => {
     totals: { sales: 500_000, refunds: 50_000, netSales: 450_000, discounts: 10_000, salesCount: 5, returnsCount: 1, averageSale: 100_000 },
     daily: [{ date: "2026-10-01", sales: 500_000, refunds: 50_000, net: 450_000, count: 5 }],
     byAccount: [{ accountName: "=Cash, main", accountType: "CASH", received: 500_000, refunded: 50_000, net: 450_000 }],
+    credit: { given: 0, collected: 0, stillOwed: 0 },
   };
 
   it("includes summary, daily and per-account sections with exact decimals", () => {
     const csv = salesReportToCsv(r, "ETB");
     expect(csv).toContain("Net sales,4500.00");
     expect(csv).toContain("2026-10-01,5000.00,500.00,4500.00,5");
+  });
+
+  it("leaves the export unchanged when credit was never used", () => {
+    expect(salesReportToCsv(r, "ETB")).not.toContain("Sales on credit");
+  });
+
+  it("adds a credit section with exact decimals when credit was used", () => {
+    const csv = salesReportToCsv({ ...r, credit: { given: 120_000, collected: 30_000, stillOwed: 90_000 } }, "ETB");
+    expect(csv).toContain("Sales on credit,Amount (ETB)");
+    expect(csv).toContain("Put on customers' tabs in this period,1200.00");
+    expect(csv).toContain("Collected from customers in this period,300.00");
+    expect(csv).toContain("Customers owe in total now,900.00");
   });
 
   it("neutralises formula injection and quotes commas in account names", () => {

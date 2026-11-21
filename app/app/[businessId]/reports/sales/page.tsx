@@ -105,6 +105,31 @@ export default async function SalesReportPage({
             </table>
           )}
         </div>
+
+        {/* Credit */}
+        {(report.credit.given > 0 || report.credit.collected > 0 || report.credit.stillOwed > 0) && (
+          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-700">Sales on credit</div>
+            <dl className="divide-y divide-gray-100 text-sm">
+              <div className="flex justify-between px-4 py-2">
+                <dt className="text-gray-600">Put on customers&apos; tabs (unpaid part of these sales)</dt>
+                <dd className="font-medium text-gray-900">{fmt(report.credit.given)}</dd>
+              </div>
+              <div className="flex justify-between px-4 py-2">
+                <dt className="text-gray-600">Collected from customers in this period</dt>
+                <dd className="font-medium text-gray-900">{fmt(report.credit.collected)}</dd>
+              </div>
+              <div className="flex justify-between px-4 py-2">
+                <dt className="text-gray-600">Customers owe in total right now</dt>
+                <dd className="font-semibold text-gray-900">{fmt(report.credit.stillOwed)}</dd>
+              </div>
+            </dl>
+            <p className="px-4 py-3 text-xs text-gray-500">
+              Sales are counted when the sale is made. Money from a credit sale reaches an account only when the
+              customer pays, so the account totals above can be lower than total sales.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -118,4 +143,3 @@ function Stat({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-

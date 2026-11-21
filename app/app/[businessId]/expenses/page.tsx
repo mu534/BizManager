@@ -28,7 +28,7 @@ export default async function ExpensesPage({
   const currency = business?.currency ?? "ETB";
 
   const today = new Date().toISOString().slice(0, 10);
-  const from = sp.from ?? new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const from = sp.from ?? new Date(new Date(today).getTime() - 30 * 86400000).toISOString().slice(0, 10);
   const to = sp.to ?? today;
 
   const [categories, result] = await Promise.all([

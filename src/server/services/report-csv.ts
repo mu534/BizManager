@@ -36,6 +36,16 @@ export function salesReportToCsv(r: SalesReport, c: string): string {
     "",
     csvRow(["Account", "Type", `Received (${c})`, `Refunded (${c})`, `Net (${c})`]),
     ...r.byAccount.map((a) => csvRow([a.accountName, a.accountType, m(a.received), m(a.refunded), m(a.net)])),
+    // Only when credit was used, so exports for shops that never sell on credit are unchanged.
+    ...(r.credit.given > 0 || r.credit.collected > 0 || r.credit.stillOwed > 0
+      ? [
+          "",
+          csvRow(["Sales on credit", `Amount (${c})`]),
+          csvRow(["Put on customers' tabs in this period", m(r.credit.given)]),
+          csvRow(["Collected from customers in this period", m(r.credit.collected)]),
+          csvRow(["Customers owe in total now", m(r.credit.stillOwed)]),
+        ]
+      : []),
   ]);
 }
 
