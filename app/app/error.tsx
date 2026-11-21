@@ -60,6 +60,8 @@ export default function AppErrorBoundary({ error, retry }: ErrorBoundaryProps) {
           Try again
         </button>
 
+        {/* A full page load is intended here: it clears whatever state caused the error. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a
           href="/app"
           className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"

@@ -14,13 +14,9 @@ export function SWRegister() {
     if (typeof window === "undefined") return;
     if (!("serviceWorker" in navigator)) return;
 
-    let registration: ServiceWorkerRegistration | undefined;
-
     navigator.serviceWorker
       .register("/sw.js", { scope: "/" })
       .then((reg) => {
-        registration = reg;
-
         // If there is already a waiting worker, show the banner immediately.
         if (reg.waiting) {
           setWaitingWorker(reg.waiting);

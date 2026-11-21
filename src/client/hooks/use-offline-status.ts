@@ -53,8 +53,10 @@ export function useOfflineStatus(): OfflineStatus {
   }
 
   useEffect(() => {
-    // Sync to the real browser state after hydration.
+    // Sync to the real browser state after hydration. The server cannot know
+    // navigator.onLine, so this one-time state update after mount is intentional.
     if (!navigator.onLine) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsOffline(true);
       startProbeInterval();
     }
