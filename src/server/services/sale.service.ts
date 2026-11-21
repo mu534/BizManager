@@ -49,6 +49,8 @@ import {
   splitReturnRefund,
 } from "@shared/credit-rules";
 import { recordCustomerDebt } from "@server/services/customer.service";
+import { readLowStockHit, scheduleLowStockAlert } from "@server/services/push.service";
+import type { LowStockHit } from "@shared/low-stock";
 import { businessDayKey, endOfBusinessDay, isDayKey, startOfBusinessDay } from "@shared/time";
 import type { TenantContext } from "@shared/types/auth.types";
 import type { CreateSaleInput, CreateReturnInput, SaleFilterInput } from "@shared/validation/sale.schema";
@@ -168,7 +170,8 @@ export async function createSale(
   const { currency, offsetMinutes } = await getBusinessTime(ctx.businessId);
 
   try {
-    return await prisma.$transaction(
+    const lowStockHits: LowStockHit[] = [];
+    const created = await prisma.$transaction(
       async (tx): Promise<SaleWithDetails> => {
         await lockKey(tx, `branch-sales:${branchId}`);
 
@@ -277,6 +280,8 @@ export async function createSale(
         for (const [productId, qty] of perProduct) {
           const name = pricing.get(productId)?.name ?? productId;
           await decrementStock(tx, productId, branchId, qty, name);
+          const hit = await readLowStockHit(tx, productId, branchId, qty);
+          if (hit) lowStockHits.push(hit);
         }
         await tx.inventoryMovement.createMany({
           data: computed.lines.map((l) => ({
@@ -341,6 +346,9 @@ export async function createSale(
       },
       { timeout: 15_000 },
     );
+    // After the sale is safely saved: tell owners/managers about products that ran low.
+    scheduleLowStockAlert(ctx.businessId, branchId, lowStockHits);
+    return created;
   } catch (err) {
     // Two identical submissions racing past the lock (e.g. different branch
     // ids is impossible, but a retry after a lost response is common): the

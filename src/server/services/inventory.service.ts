@@ -25,6 +25,8 @@ import { computeWeightedAverageCost } from "@shared/costing";
 import { requireOwnerOrManager } from "@server/auth/permissions";
 import { assertSubscriptionActive } from "@server/services/subscription.service";
 import { decrementStock, incrementStock } from "@server/services/ledger";
+import { readLowStockHit, scheduleLowStockAlert } from "@server/services/push.service";
+import type { LowStockHit } from "@shared/low-stock";
 import type { TenantContext } from "@shared/types/auth.types";
 import type {
   OpeningStockInput,
@@ -131,7 +133,8 @@ export async function recordMovement(
   }
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    let lowStockHit: LowStockHit | null = null;
+    const movement = await prisma.$transaction(async (tx) => {
       if (params.syncOperationId) {
         const existing = await tx.inventoryMovement.findUnique({
           where: { syncOperationId: params.syncOperationId },
@@ -146,6 +149,7 @@ export async function recordMovement(
 
       if (storedQuantity < 0) {
         await decrementStock(tx, params.productId, params.branchId, -storedQuantity, product.name);
+        lowStockHit = await readLowStockHit(tx, params.productId, params.branchId, -storedQuantity);
       } else {
         // Cost-bearing receipts re-average the product cost (weighted average).
         // Lock the product row first so two concurrent receipts cannot both
@@ -192,6 +196,8 @@ export async function recordMovement(
         },
       });
     });
+    if (lowStockHit) scheduleLowStockAlert(ctx.businessId, params.branchId, [lowStockHit]);
+    return movement;
   } catch (err) {
     if (
       params.syncOperationId &&
