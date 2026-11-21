@@ -1,5 +1,5 @@
-/** Supported public-site languages. Afaan Oromo uses the ISO 639-1 code "om". */
-export const LOCALES = ["en", "om"] as const;
+/** Supported public-site languages: English, Afaan Oromo ("om") and Amharic ("am"). */
+export const LOCALES = ["en", "om", "am"] as const;
 export type Locale = (typeof LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "en";
 
@@ -10,9 +10,10 @@ export function isLocale(value: unknown): value is Locale {
 export const LOCALE_LABELS: Record<Locale, { native: string; english: string }> = {
   en: { native: "English", english: "English" },
   om: { native: "Afaan Oromoo", english: "Afaan Oromo" },
+  am: { native: "አማርኛ", english: "Amharic" },
 };
 
-/** Public-site path for a locale: English lives at "/", Afaan Oromo at "/om". */
+/** Public-site path for a locale: English lives at "/", Afaan Oromo at "/om", Amharic at "/am". */
 export function homePathFor(locale: Locale): string {
   return locale === DEFAULT_LOCALE ? "/" : `/${locale}`;
 }

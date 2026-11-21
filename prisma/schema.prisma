@@ -191,7 +191,7 @@ model User {
 
   /// Expenses created by this user.
   expenses Expense[]
-
+  pushSubscriptions PushSubscription[]
   /// Sale returns created by this user.
   saleReturns SaleReturn[]
 
@@ -229,7 +229,7 @@ model Business {
   address      String?
   logoUrl      String?
   status       BusinessStatus @default(ACTIVE)
-
+  pushSubscriptions PushSubscription[]
   members          BusinessMember[]
   branches         Branch[]
 
@@ -260,6 +260,23 @@ model Business {
   updatedAt DateTime @updatedAt
 
   @@map("businesses")
+}
+model PushSubscription {
+  id         String   @id @default(uuid())
+  businessId String
+  userId     String
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, userId])
+  @@map("push_subscriptions")
 }
 
 /// A physical branch or shop within a business.
