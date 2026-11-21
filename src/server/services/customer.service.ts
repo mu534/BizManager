@@ -32,6 +32,28 @@ export async function createCustomer(
   });
 }
 
+// ─── updateCustomer ────────────────────────────────────────
+
+/** Change a customer's contact details. Owner/manager only; never touches balances. */
+export async function updateCustomer(
+  ctx: TenantContext,
+  customerId: string,
+  input: { name: string; phone?: string; email?: string; notes?: string },
+): Promise<void> {
+  requireOwnerOrManager(ctx);
+  const existing = await prisma.customer.findUnique({ where: { id: customerId }, select: { businessId: true } });
+  if (!existing || existing.businessId !== ctx.businessId) throw appError.notFound("Customer not found");
+  await prisma.customer.update({
+    where: { id: customerId },
+    data: {
+      name: input.name,
+      phone: input.phone ?? null,
+      email: input.email ?? null,
+      notes: input.notes ?? null,
+    },
+  });
+}
+
 // ─── getCustomer ───────────────────────────────────────────
 
 export async function getCustomer(
