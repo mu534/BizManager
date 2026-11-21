@@ -189,3 +189,19 @@ There is no payment gateway and no automatic verification.
   *Authorized domains*, and review the password-reset and verification email templates.
 - Continuous integration (`.github/workflows/ci.yml`) runs type-check, tests and a build on
   every pull request, and applies all migrations to an empty PostgreSQL database.
+
+## Push notifications (low-stock alerts)
+
+Optional. Without these three settings the feature is simply off and nothing else changes.
+
+1. Generate a key pair once: `npx web-push generate-vapid-keys`
+2. Set `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (public key), `VAPID_PRIVATE_KEY` (private key, server only) and
+   `VAPID_CONTACT_EMAIL` (an address you read; browsers may use it to contact you about abuse).
+   Keep the same key pair forever: changing it silently stops every existing device from receiving alerts.
+3. Run `npx prisma migrate deploy` (adds the `push_subscriptions` table), then redeploy.
+4. Each owner or manager opens **Notifications** in the app and taps *Turn on low-stock alerts* on each device.
+   iPhones only support this after BizManager is added to the Home Screen.
+
+An alert is sent once when a product drops to its "minimum stock" level (and again only after it has been
+restocked above that level and drops again). Owners are told about every branch, managers about the branches
+they can access. Alerts are sent after the sale is saved, so a notification problem can never fail a sale.
