@@ -4,6 +4,7 @@ import Link from "next/link";
 import { resolveContext } from "@server/auth/resolve-context";
 import { getSale } from "@server/services/sale.service";
 import { prisma } from "@server/db/prisma";
+import { PrintButton } from "@components/ui/print-button";
 import { Money } from "@shared/money";
 
 export const metadata: Metadata = { title: "Sale Detail" };
@@ -28,6 +29,11 @@ export default async function SaleDetailPage({
   const currency = business?.currency ?? "ETB";
   const fmt = (n: number) => Money.format(n, currency);
   const canReturn = ctx.role === "OWNER" || ctx.role === "MANAGER";
+  // Part of this sale may have been left on a customer's tab.
+  const debt = await prisma.customerDebt.findFirst({
+    where: { saleId, businessId },
+    include: { customer: { select: { id: true, name: true } } },
+  });
 
   return (
     <div className="max-w-2xl space-y-4 print:max-w-none">
@@ -37,9 +43,7 @@ export default async function SaleDetailPage({
           <h1 className="text-xl font-semibold text-gray-900">Sale Detail</h1>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => window.print()} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">
-            Print
-          </button>
+          <PrintButton className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50" />
           {canReturn && (sale.status === "COMPLETED" || sale.status === "PARTIALLY_RETURNED") && (
             <Link href={`/app/${businessId}/sell/history/${saleId}/return`}
               className="rounded-md border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">
@@ -103,6 +107,26 @@ export default async function SaleDetailPage({
               <span>{p.account.name}</span><span>{fmt(p.amount)}</span>
             </div>
           ))}
+          {debt && (
+            <div className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-amber-900">
+              <div className="flex justify-between font-medium">
+                <span>On credit</span>
+                <span>{fmt(debt.originalAmountMinor)}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span>
+                  {canReturn ? (
+                    <Link className="underline" href={`/app/${businessId}/customers/${debt.customer.id}`}>
+                      {debt.customer.name}
+                    </Link>
+                  ) : (
+                    debt.customer.name
+                  )}
+                </span>
+                <span>{debt.outstandingMinor > 0 ? `Still owed ${fmt(debt.outstandingMinor)}` : "Paid in full"}</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {sale.returns.length > 0 && (

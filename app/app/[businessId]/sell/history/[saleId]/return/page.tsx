@@ -5,7 +5,6 @@ import { resolveContext } from "@server/auth/resolve-context";
 import { getSale } from "@server/services/sale.service";
 import { listAccounts } from "@server/services/financial.service";
 import { prisma } from "@server/db/prisma";
-import { Money } from "@shared/money";
 import { ReturnFormClient } from "./return-form-client";
 
 export const metadata: Metadata = { title: "Process Return" };
