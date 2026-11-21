@@ -1,4 +1,4 @@
-import { getDictionary, type Locale } from "@shared/i18n";
+import { getDictionary, homePathFor, type Locale } from "@shared/i18n";
 import { siteUrl } from "@shared/site-url";
 
 /**
@@ -15,8 +15,8 @@ export function StructuredData({ locale }: { locale: Locale }) {
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
     description: t.meta.description,
-    inLanguage: locale === "om" ? "om" : "en",
-    url: `${siteUrl()}${locale === "om" ? "/om" : "/"}`,
+    inLanguage: locale,
+    url: `${siteUrl()}${homePathFor(locale)}`,
   };
   // Escape "<" so the JSON can never close the script tag early.
   const json = JSON.stringify(data).replace(/</g, "\\u003c");

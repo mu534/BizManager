@@ -8,7 +8,7 @@ const t = getDictionary("om");
 export const metadata: Metadata = {
   title: { absolute: t.meta.title },
   description: t.meta.description,
-  alternates: { canonical: "/om", languages: { en: "/", om: "/om" } },
+  alternates: { canonical: "/om", languages: { en: "/", om: "/om", am: "/am" } },
 };
 
 /** Public marketing homepage (Afaan Oromoo). */

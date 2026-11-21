@@ -5,7 +5,7 @@ export function siteUrl(): string {
 }
 
 /** Public, indexable pages. Signed-in and admin areas are deliberately absent. */
-export const PUBLIC_PATHS = ["/", "/om", "/privacy", "/terms"] as const;
+export const PUBLIC_PATHS = ["/", "/om", "/am", "/privacy", "/terms"] as const;
 
 /** Areas search engines must not crawl. */
 export const PRIVATE_PATHS = ["/app", "/admin", "/api", "/create-business", "/offline"] as const;

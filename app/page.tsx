@@ -8,10 +8,10 @@ const t = getDictionary("en");
 export const metadata: Metadata = {
   title: { absolute: t.meta.title },
   description: t.meta.description,
-  alternates: { canonical: "/", languages: { en: "/", om: "/om" } },
+  alternates: { canonical: "/", languages: { en: "/", om: "/om", am: "/am" } },
 };
 
-/** Public marketing homepage (English). Afaan Oromo lives at /om. */
+
 export default function HomePage() {
   return (
     <>

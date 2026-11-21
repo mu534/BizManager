@@ -20,6 +20,6 @@ describe("sitemap", () => {
   });
   it("links the English and Afaan Oromo homepages to each other", () => {
     const home = sitemap()[0];
-    expect(home?.alternates?.languages).toMatchObject({ en: expect.stringContaining("/"), om: expect.stringContaining("/om") });
+    expect(home?.alternates?.languages).toMatchObject({ en: expect.stringContaining("/"), om: expect.stringContaining("/om"), am: expect.stringContaining("/am") });
   });
 });

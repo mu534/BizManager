@@ -1,11 +1,12 @@
 import { enDictionary, type Dictionary } from "./en";
 import { omDictionary } from "./om";
+import { amDictionary } from "./am";
 import type { Locale } from "./locales";
 
 export type { Dictionary } from "./en";
 export * from "./locales";
 
-const DICTIONARIES: Record<Locale, Dictionary> = { en: enDictionary, om: omDictionary };
+const DICTIONARIES: Record<Locale, Dictionary> = { en: enDictionary, om: omDictionary, am: amDictionary };
 
 export function getDictionary(locale: Locale): Dictionary {
   return DICTIONARIES[locale];
