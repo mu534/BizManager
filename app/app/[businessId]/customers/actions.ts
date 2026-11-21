@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { resolveContext } from "@server/auth/resolve-context";
-import { createCustomer, receiveCustomerPayment } from "@server/services/customer.service";
+import { createCustomer, receiveCustomerPayment, updateCustomer } from "@server/services/customer.service";
 import { assertSubscriptionActive } from "@server/services/subscription.service";
 import { prisma } from "@server/db/prisma";
 import { createCustomerSchema, receiveCustomerPaymentSchema } from "@shared/validation/customer.schema";
@@ -79,6 +79,30 @@ export async function receivePaymentAction(
       operationId: parsed.data.operationId,
       notes: parsed.data.notes,
     });
+  } catch (err) {
+    return fail(isAppError(err) ? err.message : "Something went wrong. Please try again.", { values: raw });
+  }
+  redirect(`/app/${businessId}/customers/${customerId}`);
+}
+
+export async function updateCustomerAction(
+  businessId: string,
+  customerId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const raw = { name: str(formData.get("name")), phone: str(formData.get("phone")), notes: str(formData.get("notes")) };
+  const parsed = createCustomerSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fail("Please fix the errors below.", {
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+      values: raw,
+    });
+  }
+  try {
+    const ctx = await resolveContext(businessId);
+    await assertSubscriptionActive(ctx);
+    await updateCustomer(ctx, customerId, parsed.data);
   } catch (err) {
     return fail(isAppError(err) ? err.message : "Something went wrong. Please try again.", { values: raw });
   }
