@@ -43,7 +43,7 @@ export default async function SalesReportPage({
       <ReportNav businessId={businessId} active="sales" showBranches={rb.branches.length > 1} />
 
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Sales Report</h1>
+        <h1 className="text-xl font-semibold text-ink-900">Sales Report</h1>
         <RangeFilter branches={rb.branches} branchId={rb.selectedId} range={filters.range} from={filters.range === "custom" ? sp.from : undefined} to={filters.range === "custom" ? sp.to : undefined} />
       </div>
 
@@ -55,25 +55,25 @@ export default async function SalesReportPage({
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {/* Daily breakdown */}
-        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-700">Sales by Day</div>
+        <div className="rounded-lg border border-ink-200 bg-white overflow-hidden">
+          <div className="px-4 py-3 border-b border-ink-200 text-sm font-semibold text-ink-700">Sales by Day</div>
           {report.daily.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-gray-400">No sales in this period.</p>
+            <p className="px-4 py-6 text-sm text-ink-400">No sales in this period.</p>
           ) : (
             <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200 text-xs">
+              <thead className="bg-ink-50 border-b border-ink-200 text-xs">
                 <tr>
-                  <th className="px-4 py-2 text-left font-medium text-gray-500">Date</th>
-                  <th className="px-4 py-2 text-center font-medium text-gray-500">Sales</th>
-                  <th className="px-4 py-2 text-right font-medium text-gray-500">Revenue</th>
+                  <th className="px-4 py-2 text-left font-medium text-ink-500">Date</th>
+                  <th className="px-4 py-2 text-center font-medium text-ink-500">Sales</th>
+                  <th className="px-4 py-2 text-right font-medium text-ink-500">Revenue</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-ink-100">
                 {report.daily.map((d) => (
-                  <tr key={d.date} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 text-gray-600">{d.date}</td>
-                    <td className="px-4 py-2 text-center text-gray-600">{d.count}</td>
-                    <td className="px-4 py-2 text-right font-medium text-gray-900">{fmt(d.net)}</td>
+                  <tr key={d.date} className="hover:bg-ink-50">
+                    <td className="px-4 py-2 text-ink-600">{d.date}</td>
+                    <td className="px-4 py-2 text-center text-ink-600">{d.count}</td>
+                    <td className="px-4 py-2 text-right font-medium text-ink-900">{fmt(d.net)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -82,23 +82,23 @@ export default async function SalesReportPage({
         </div>
 
         {/* By account */}
-        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-700">By Payment Account</div>
+        <div className="rounded-lg border border-ink-200 bg-white overflow-hidden">
+          <div className="px-4 py-3 border-b border-ink-200 text-sm font-semibold text-ink-700">By Payment Account</div>
           {report.byAccount.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-gray-400">No payment data.</p>
+            <p className="px-4 py-6 text-sm text-ink-400">No payment data.</p>
           ) : (
             <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200 text-xs">
+              <thead className="bg-ink-50 border-b border-ink-200 text-xs">
                 <tr>
-                  <th className="px-4 py-2 text-left font-medium text-gray-500">Account</th>
-                  <th className="px-4 py-2 text-right font-medium text-gray-500">Amount</th>
+                  <th className="px-4 py-2 text-left font-medium text-ink-500">Account</th>
+                  <th className="px-4 py-2 text-right font-medium text-ink-500">Amount</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-ink-100">
                 {report.byAccount.map((a, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 text-gray-900">{a.accountName}</td>
-                    <td className="px-4 py-2 text-right font-medium text-gray-900">{fmt(a.net)}</td>
+                  <tr key={i} className="hover:bg-ink-50">
+                    <td className="px-4 py-2 text-ink-900">{a.accountName}</td>
+                    <td className="px-4 py-2 text-right font-medium text-ink-900">{fmt(a.net)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -108,23 +108,23 @@ export default async function SalesReportPage({
 
         {/* Credit */}
         {(report.credit.given > 0 || report.credit.collected > 0 || report.credit.stillOwed > 0) && (
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-700">Sales on credit</div>
-            <dl className="divide-y divide-gray-100 text-sm">
+          <div className="rounded-lg border border-ink-200 bg-white overflow-hidden">
+            <div className="px-4 py-3 border-b border-ink-200 text-sm font-semibold text-ink-700">Sales on credit</div>
+            <dl className="divide-y divide-ink-100 text-sm">
               <div className="flex justify-between px-4 py-2">
-                <dt className="text-gray-600">Put on customers&apos; tabs (unpaid part of these sales)</dt>
-                <dd className="font-medium text-gray-900">{fmt(report.credit.given)}</dd>
+                <dt className="text-ink-600">Put on customers&apos; tabs (unpaid part of these sales)</dt>
+                <dd className="font-medium text-ink-900">{fmt(report.credit.given)}</dd>
               </div>
               <div className="flex justify-between px-4 py-2">
-                <dt className="text-gray-600">Collected from customers in this period</dt>
-                <dd className="font-medium text-gray-900">{fmt(report.credit.collected)}</dd>
+                <dt className="text-ink-600">Collected from customers in this period</dt>
+                <dd className="font-medium text-ink-900">{fmt(report.credit.collected)}</dd>
               </div>
               <div className="flex justify-between px-4 py-2">
-                <dt className="text-gray-600">Customers owe in total right now</dt>
-                <dd className="font-semibold text-gray-900">{fmt(report.credit.stillOwed)}</dd>
+                <dt className="text-ink-600">Customers owe in total right now</dt>
+                <dd className="font-semibold text-ink-900">{fmt(report.credit.stillOwed)}</dd>
               </div>
             </dl>
-            <p className="px-4 py-3 text-xs text-gray-500">
+            <p className="px-4 py-3 text-xs text-ink-500">
               Sales are counted when the sale is made. Money from a credit sale reaches an account only when the
               customer pays, so the account totals above can be lower than total sales.
             </p>
@@ -137,9 +137,9 @@ export default async function SalesReportPage({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className="mt-1 text-xl font-semibold text-gray-900">{value}</p>
+    <div className="rounded-lg border border-ink-200 bg-white px-4 py-3">
+      <p className="text-xs text-ink-500">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-ink-900">{value}</p>
     </div>
   );
 }

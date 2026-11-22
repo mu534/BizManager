@@ -21,7 +21,7 @@ describe("computeSale", () => {
       canOverridePrice: false,
       items: [{ productId: "p1", unitPrice: "0.01", quantity: 2 }],
     });
-    expect(sale.lines[0]!.unitPrice).toBe(5000);
+    expect(sale.lines[0]?.unitPrice).toBe(5000);
     expect(sale.finalTotal).toBe(10000);
   });
 
@@ -31,8 +31,8 @@ describe("computeSale", () => {
       canOverridePrice: true,
       items: [{ productId: "p1", unitPrice: "45.00", quantity: 2 }],
     });
-    expect(sale.lines[0]!.unitPrice).toBe(4500);
-    expect(sale.lines[0]!.unitCost).toBe(4000);
+    expect(sale.lines[0]?.unitPrice).toBe(4500);
+    expect(sale.lines[0]?.unitCost).toBe(4000);
   });
 
   it("applies line and sale discounts and keeps integers", () => {

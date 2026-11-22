@@ -24,7 +24,7 @@ export default async function InventoryPage({
 
   const branch = await getCurrentBranch(ctx);
   if (!branch) {
-    return <p className="text-sm text-gray-500">No active branch found.</p>;
+    return <p className="text-sm text-ink-500">No active branch found.</p>;
   }
 
   const business = await prisma.business.findUnique({
@@ -41,9 +41,9 @@ export default async function InventoryPage({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Inventory — {branch.name}</h1>
+        <h1 className="text-xl font-semibold text-ink-900">Inventory — {branch.name}</h1>
         <Link href={`/app/${businessId}/inventory/adjust`}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+          className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
           Adjust stock
         </Link>
       </div>
@@ -64,46 +64,46 @@ export default async function InventoryPage({
       )}
 
       {stockLevels.length === 0 ? (
-        <div className="rounded-lg border border-gray-200 bg-white px-6 py-12 text-center">
-          <p className="text-sm text-gray-500">No stock recorded yet.</p>
+        <div className="rounded-lg border border-ink-200 bg-white px-6 py-12 text-center">
+          <p className="text-sm text-ink-500">No stock recorded yet.</p>
           <Link href={`/app/${businessId}/inventory/adjust`}
-            className="mt-3 inline-block text-sm font-medium text-blue-600 hover:underline">
+            className="mt-3 inline-block text-sm font-medium text-brand-600 hover:underline">
             Record opening stock
           </Link>
         </div>
       ) : (
-        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+        <div className="rounded-lg border border-ink-200 bg-white overflow-hidden">
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-ink-50 border-b border-ink-200">
               <tr>
-                <th className="px-4 py-2.5 text-left font-medium text-gray-600">Product</th>
-                <th className="px-4 py-2.5 text-right font-medium text-gray-600">In Stock</th>
-                <th className="px-4 py-2.5 text-right font-medium text-gray-600 hidden sm:table-cell">Min Level</th>
-                <th className="px-4 py-2.5 text-right font-medium text-gray-600 hidden md:table-cell">Unit Cost</th>
-                <th className="px-4 py-2.5 text-right font-medium text-gray-600 hidden md:table-cell">Value</th>
+                <th className="px-4 py-2.5 text-left font-medium text-ink-600">Product</th>
+                <th className="px-4 py-2.5 text-right font-medium text-ink-600">In Stock</th>
+                <th className="px-4 py-2.5 text-right font-medium text-ink-600 hidden sm:table-cell">Min Level</th>
+                <th className="px-4 py-2.5 text-right font-medium text-ink-600 hidden md:table-cell">Unit Cost</th>
+                <th className="px-4 py-2.5 text-right font-medium text-ink-600 hidden md:table-cell">Value</th>
                 <th className="px-4 py-2.5"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-ink-100">
               {stockLevels.map(({ product, snapshot }) => {
                 const isLow = snapshot.quantity <= product.minStockLevel;
                 return (
-                  <tr key={product.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2.5 font-medium text-gray-900">
+                  <tr key={product.id} className="hover:bg-ink-50">
+                    <td className="px-4 py-2.5 font-medium text-ink-900">
                       {product.name}
-                      {product.sku && <span className="ml-2 text-xs text-gray-400">{product.sku}</span>}
+                      {product.sku && <span className="ml-2 text-xs text-ink-400">{product.sku}</span>}
                     </td>
-                    <td className={`px-4 py-2.5 text-right font-semibold ${isLow ? "text-amber-600" : "text-gray-900"}`}>
+                    <td className={`px-4 py-2.5 text-right font-semibold ${isLow ? "text-amber-600" : "text-ink-900"}`}>
                       {snapshot.quantity} {isLow && "⚠"}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-gray-500 hidden sm:table-cell">{product.minStockLevel}</td>
-                    <td className="px-4 py-2.5 text-right text-gray-600 hidden md:table-cell">{Money.format(product.costPrice, currency)}</td>
-                    <td className="px-4 py-2.5 text-right text-gray-600 hidden md:table-cell">
+                    <td className="px-4 py-2.5 text-right text-ink-500 hidden sm:table-cell">{product.minStockLevel}</td>
+                    <td className="px-4 py-2.5 text-right text-ink-600 hidden md:table-cell">{Money.format(product.costPrice, currency)}</td>
+                    <td className="px-4 py-2.5 text-right text-ink-600 hidden md:table-cell">
                       {Money.format(product.costPrice * snapshot.quantity, currency)}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <Link href={`/app/${businessId}/inventory/${product.id}/movements`}
-                        className="text-sm text-blue-600 hover:underline">
+                        className="text-sm text-brand-600 hover:underline">
                         History
                       </Link>
                     </td>

@@ -7,7 +7,7 @@ describe("allocateSaleDiscount", () => {
     for (const discount of [0, 1, 7, 100, 333, 1001]) {
       const alloc = allocateSaleDiscount(lines, discount);
       expect(alloc.reduce((a, b) => a + b, 0)).toBe(discount);
-      alloc.forEach((a, i) => expect(a).toBeLessThanOrEqual(lines[i]!));
+      alloc.forEach((a, i) => expect(a).toBeLessThanOrEqual(lines[i] ?? 0));
     }
   });
 
@@ -26,7 +26,7 @@ describe("refundForReturn — regression: refunds must never exceed what was pai
     // Two lines of ETB 10.00 each, ETB 5.00 sale-level discount: customer paid 15.00.
     const lineTotals = [1000, 1000];
     const alloc = allocateSaleDiscount(lineTotals, 500);
-    const net = lineTotals.map((t, i) => lineNetPaid(t, alloc[i]!));
+    const net = lineTotals.map((t, i) => lineNetPaid(t, alloc[i] ?? 0));
     expect(net.reduce((a, b) => a + b, 0)).toBe(1500);
 
     const refund = net.reduce((sum, n) => sum + refundForReturn(n, 1, 0, 1), 0);

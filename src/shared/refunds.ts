@@ -47,8 +47,8 @@ export function allocateSaleDiscount(
   for (const { i } of order) {
     if (remainder <= 0) break;
     // Never allocate more discount to a line than the line is worth.
-    if (result[i]! < lineTotals[i]!) {
-      result[i]! += 1;
+    if ((result[i] ?? 0) < (lineTotals[i] ?? 0)) {
+      result[i] = (result[i] ?? 0) + 1;
       remainder -= 1;
     }
   }

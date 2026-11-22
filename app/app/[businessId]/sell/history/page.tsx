@@ -55,49 +55,49 @@ export default async function SalesHistoryPage({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Sales History</h1>
+        <h1 className="text-xl font-semibold text-ink-900">Sales History</h1>
         <Link href={`/app/${businessId}/sell`}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+          className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
           New sale
         </Link>
       </div>
 
       <form method="GET" className="flex flex-wrap gap-3">
         <input name="from" type="date" defaultValue={from}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          className="rounded-md border border-ink-300 px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-500" />
         <input name="to" type="date" defaultValue={to}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
-        <button type="submit" className="rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200">
+          className="rounded-md border border-ink-300 px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-500" />
+        <button type="submit" className="rounded-md bg-ink-100 px-3 py-1.5 text-sm font-medium text-ink-700 hover:bg-ink-200">
           Filter
         </button>
       </form>
 
       {result.sales.length === 0 ? (
-        <div className="rounded-lg border border-gray-200 bg-white px-6 py-10 text-center">
-          <p className="text-sm text-gray-500">No sales for this period.</p>
+        <div className="rounded-lg border border-ink-200 bg-white px-6 py-10 text-center">
+          <p className="text-sm text-ink-500">No sales for this period.</p>
         </div>
       ) : (
-        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-gray-200 text-xs text-gray-500">
+        <div className="rounded-lg border border-ink-200 bg-white overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-ink-200 text-xs text-ink-500">
             {result.total} sales · Total: {fmt(result.sales.reduce((s, sale) => s + sale.finalTotal, 0))}
           </div>
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-ink-50 border-b border-ink-200">
               <tr>
-                <th className="px-4 py-2.5 text-left font-medium text-gray-600">Time</th>
-                <th className="px-4 py-2.5 text-left font-medium text-gray-600 hidden sm:table-cell">Receipt</th>
-                <th className="px-4 py-2.5 text-center font-medium text-gray-600">Status</th>
-                <th className="px-4 py-2.5 text-right font-medium text-gray-600">Total</th>
+                <th className="px-4 py-2.5 text-left font-medium text-ink-600">Time</th>
+                <th className="px-4 py-2.5 text-left font-medium text-ink-600 hidden sm:table-cell">Receipt</th>
+                <th className="px-4 py-2.5 text-center font-medium text-ink-600">Status</th>
+                <th className="px-4 py-2.5 text-right font-medium text-ink-600">Total</th>
                 <th className="px-4 py-2.5"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-ink-100">
               {result.sales.map((sale) => (
-                <tr key={sale.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">
+                <tr key={sale.id} className="hover:bg-ink-50">
+                  <td className="px-4 py-2.5 text-ink-600 whitespace-nowrap">
                     {new Date(sale.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </td>
-                  <td className="px-4 py-2.5 text-gray-500 hidden sm:table-cell">
+                  <td className="px-4 py-2.5 text-ink-500 hidden sm:table-cell">
                     {sale.receiptNumber ?? "—"}
                   </td>
                   <td className="px-4 py-2.5 text-center">
@@ -105,15 +105,15 @@ export default async function SalesHistoryPage({
                       sale.status === "COMPLETED" ? "bg-green-50 text-green-700" :
                       sale.status === "RETURNED" ? "bg-red-50 text-red-700" :
                       sale.status === "PARTIALLY_RETURNED" ? "bg-amber-50 text-amber-700" :
-                      "bg-gray-100 text-gray-500"
+                      "bg-ink-100 text-ink-500"
                     }`}>
                       {STATUS_LABELS[sale.status] ?? sale.status}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{fmt(sale.finalTotal)}</td>
+                  <td className="px-4 py-2.5 text-right font-semibold text-ink-900">{fmt(sale.finalTotal)}</td>
                   <td className="px-4 py-2.5 text-right">
                     <Link href={`/app/${businessId}/sell/history/${sale.id}`}
-                      className="text-sm text-blue-600 hover:underline">
+                      className="text-sm text-brand-600 hover:underline">
                       View
                     </Link>
                   </td>

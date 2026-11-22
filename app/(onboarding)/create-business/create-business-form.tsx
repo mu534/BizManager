@@ -117,7 +117,7 @@ export default function CreateBusinessForm({ userName }: Props) {
           onChange={(e) => setBusinessName(e.target.value)}
           disabled={loading}
           maxLength={120}
-          className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm placeholder-gray-400 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-ink-50"
+          className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm placeholder-ink-400 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-ink-50"
           placeholder="e.g. Selam Fashion Store"
         />
       </div>
@@ -203,7 +203,7 @@ export default function CreateBusinessForm({ userName }: Props) {
           onChange={(e) => setPhone(e.target.value)}
           disabled={loading}
           maxLength={30}
-          className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm placeholder-gray-400 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-ink-50"
+          className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm placeholder-ink-400 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-ink-50"
           placeholder="+251 91 123 4567"
         />
       </div>
@@ -223,7 +223,7 @@ export default function CreateBusinessForm({ userName }: Props) {
           onChange={(e) => setBranchName(e.target.value)}
           disabled={loading}
           maxLength={100}
-          className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm placeholder-gray-400 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-ink-50"
+          className="block w-full rounded-md border border-line-strong px-3 py-2 text-sm shadow-sm placeholder-ink-400 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-ink-50"
           placeholder="Main Branch"
         />
       </div>

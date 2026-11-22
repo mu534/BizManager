@@ -68,7 +68,7 @@ export function BottomNav({ businessId }: BottomNavProps) {
     <nav
       role="navigation"
       aria-label="Mobile navigation"
-      className="fixed bottom-0 left-0 right-0 z-50 border-t border-gray-200 bg-white md:hidden"
+      className="fixed bottom-0 left-0 right-0 z-50 border-t border-ink-200 bg-white md:hidden"
     >
       <div className="grid grid-cols-5">
         {LINKS.map(({ segment, label, href, icon }) => {
@@ -79,11 +79,11 @@ export function BottomNav({ businessId }: BottomNavProps) {
               key={segment}
               href={linkHref}
               className={`flex min-h-[44px] flex-col items-center justify-center gap-0.5 px-1 py-2 text-xs font-medium transition-colors ${
-                active ? "text-blue-700" : "text-gray-500 hover:text-gray-900"
+                active ? "text-brand-700" : "text-ink-500 hover:text-ink-900"
               }`}
               aria-current={active ? "page" : undefined}
             >
-              <span className={active ? "text-blue-700" : "text-gray-400"}>
+              <span className={active ? "text-brand-700" : "text-ink-400"}>
                 {icon}
               </span>
               {label}

@@ -1,6 +1,6 @@
 import "server-only";
 import { after } from "next/server";
-import webpush from "web-push";
+import * as webpush from "web-push";
 import { prisma } from "@server/db/prisma";
 import { requireOwnerOrManager } from "@server/auth/permissions";
 import type { TenantContext } from "@shared/types/auth.types";

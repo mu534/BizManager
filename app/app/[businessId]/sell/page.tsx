@@ -23,7 +23,7 @@ export default async function SellPage({
   if (!ctx) redirect("/sign-in");
 
   const branch = await getCurrentBranch(ctx);
-  if (!branch) return <p className="text-sm text-gray-500">No active branch found.</p>;
+  if (!branch) return <p className="text-sm text-ink-500">No active branch found.</p>;
 
   const [accounts, business] = await Promise.all([
     listAccounts(ctx),
@@ -38,9 +38,9 @@ export default async function SellPage({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">New Sale</h1>
+        <h1 className="text-xl font-semibold text-ink-900">New Sale</h1>
         <Link href={`/app/${businessId}/sell/history`}
-          className="text-sm text-gray-500 hover:text-gray-900">
+          className="text-sm text-ink-500 hover:text-ink-900">
           Sales history →
         </Link>
       </div>

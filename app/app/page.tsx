@@ -35,7 +35,10 @@ export default async function AppRootPage({
   const targetBusiness =
     (requestedBusinessId &&
       businesses.find((b) => b.business.id === requestedBusinessId)) ||
-    businesses[0]!;
+    businesses[0];
 
-  redirect(`/app/${targetBusiness.business.id}/dashboard`);
+  if (targetBusiness) {
+    redirect(`/app/${targetBusiness.business.id}/dashboard`);
+  }
+  redirect("/create-business");
 }

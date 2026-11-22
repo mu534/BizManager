@@ -330,7 +330,7 @@ export async function listProducts(
       : [];
     return {
       ...p,
-      stockSnapshot: snapshots.length > 0 ? snapshots[0]! : null,
+      stockSnapshot: snapshots.length > 0 ? (snapshots[0] ?? null) : null,
     };
   });
 
@@ -369,7 +369,7 @@ export async function searchProducts(
       : [];
     return {
       ...p,
-      stockSnapshot: snapshots.length > 0 ? snapshots[0]! : null,
+      stockSnapshot: snapshots.length > 0 ? (snapshots[0] ?? null) : null,
     };
   });
 }
@@ -399,7 +399,7 @@ export async function findByBarcode(
 
   return {
     ...product,
-    stockSnapshot: snapshots.length > 0 ? snapshots[0]! : null,
+    stockSnapshot: snapshots.length > 0 ? (snapshots[0] ?? null) : null,
   };
 }
 

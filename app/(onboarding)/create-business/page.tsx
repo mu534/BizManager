@@ -26,8 +26,10 @@ export default async function CreateBusinessPage() {
   // If the user already has businesses, skip onboarding.
   const businesses = await getBusinessesForUser(identity.userId);
   if (businesses.length > 0) {
-    const firstBusiness = businesses[0]!;
-    redirect(`/app?businessId=${firstBusiness.business.id}`);
+    const firstBusiness = businesses[0];
+    if (firstBusiness) {
+      redirect(`/app?businessId=${firstBusiness.business.id}`);
+    }
   }
 
   return (

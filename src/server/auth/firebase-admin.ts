@@ -38,4 +38,4 @@ function createAdminApp(): App {
 
 // Singleton: one admin app per Node.js process (hot-reload safe).
 export const adminApp: App =
-  getApps().length > 0 ? getApps()[0]! : createAdminApp();
+  getApps().length > 0 ? (getApps()[0] as App) : createAdminApp();

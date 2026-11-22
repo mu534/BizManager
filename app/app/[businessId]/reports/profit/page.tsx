@@ -56,7 +56,7 @@ export default async function ProfitReportPage({
       <ReportNav businessId={businessId} active="profit" showBranches={rb.branches.length > 1} />
 
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Profit Report</h1>
+        <h1 className="text-xl font-semibold text-ink-900">Profit Report</h1>
         <RangeFilter branches={rb.branches} branchId={rb.selectedId} range={filters.range} from={sp.from} to={sp.to} />
       </div>
 
@@ -64,9 +64,9 @@ export default async function ProfitReportPage({
         This is a management report based on recorded sales, refunds, cost snapshots and expenses. It is not a certified accounting statement and excludes taxes and other items that are not recorded in BizManager.
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-200 text-sm font-semibold text-gray-700">Summary</div>
-        <div className="divide-y divide-gray-100 text-sm">
+      <div className="rounded-lg border border-ink-200 bg-white overflow-hidden">
+        <div className="px-5 py-4 border-b border-ink-200 text-sm font-semibold text-ink-700">Summary</div>
+        <div className="divide-y divide-ink-100 text-sm">
           <ProfitRow label="Revenue" value={fmt(report.netSales)} />
           <ProfitRow label="Cost of Goods Sold (COGS)" value={`− ${fmt(report.cogs)}`} muted />
           <ProfitRow label="Gross Profit" value={fmt(report.grossProfit)}
@@ -129,16 +129,16 @@ export default async function ProfitReportPage({
         </p>
       )}
 
-      <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm space-y-2">
-        <p className="font-medium text-gray-700">How these numbers are calculated</p>
-        <ul className="space-y-1 text-gray-500 list-disc list-inside">
+      <div className="rounded-lg border border-ink-200 bg-white p-4 text-sm space-y-2">
+        <p className="font-medium text-ink-700">How these numbers are calculated</p>
+        <ul className="space-y-1 text-ink-500 list-disc list-inside">
           <li>Revenue = completed sale totals minus refunds issued in this period</li>
           <li>COGS = unit cost × quantity sold (from sale item snapshots), minus restocked returns</li>
           <li>Gross Profit = Revenue − COGS</li>
           <li>Operating Expenses = all recorded expenses in this period</li>
           <li>Net Operating Profit = Gross Profit − Operating Expenses</li>
         </ul>
-        <p className="text-gray-400 text-xs mt-2">
+        <p className="text-ink-400 text-xs mt-2">
           Account balances, deposits, transfers, and inventory value are separate concepts and are not included here.
         </p>
       </div>
@@ -162,14 +162,14 @@ function ProfitRow({
   large?: boolean;
 }) {
   return (
-    <div className={`flex items-center justify-between px-5 py-3 ${large ? "bg-gray-50" : ""}`}>
-      <span className={`${muted ? "text-gray-500" : bold ? "font-semibold text-gray-900" : "text-gray-700"} ${large ? "text-base" : ""}`}>
+    <div className={`flex items-center justify-between px-5 py-3 ${large ? "bg-ink-50" : ""}`}>
+      <span className={`${muted ? "text-ink-500" : bold ? "font-semibold text-ink-900" : "text-ink-700"} ${large ? "text-base" : ""}`}>
         {label}
       </span>
       <span className={`${bold ? "font-semibold" : ""} ${large ? "text-lg" : ""} ${
         highlight === "positive" ? "text-green-700" :
         highlight === "negative" ? "text-red-600" :
-        muted ? "text-gray-500" : "text-gray-900"
+        muted ? "text-ink-500" : "text-ink-900"
       }`}>
         {value}
       </span>

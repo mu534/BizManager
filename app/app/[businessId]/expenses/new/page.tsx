@@ -24,14 +24,14 @@ export default async function NewExpensePage({
 
   const branch = await getCurrentBranch(ctx);
   if (!branch)
-    return <p className="text-sm text-gray-500">No active branch found.</p>;
+    return <p className="text-sm text-ink-500">No active branch found.</p>;
 
   const business = await prisma.business.findUnique({
     where: { id: businessId },
     select: { currency: true },
   });
   if (!business)
-    return <p className="text-sm text-gray-500">Business not found.</p>;
+    return <p className="text-sm text-ink-500">Business not found.</p>;
 
   const [categories, accounts] = await Promise.all([
     listExpenseCategories(ctx),
@@ -43,11 +43,11 @@ export default async function NewExpensePage({
       <div className="flex items-center gap-3">
         <a
           href={`/app/${businessId}/expenses`}
-          className="text-sm text-gray-500 hover:text-gray-900"
+          className="text-sm text-ink-500 hover:text-ink-900"
         >
           ← Expenses
         </a>
-        <h1 className="text-xl font-semibold text-gray-900">Record expense</h1>
+        <h1 className="text-xl font-semibold text-ink-900">Record expense</h1>
       </div>
 
       <ExpenseFormClient

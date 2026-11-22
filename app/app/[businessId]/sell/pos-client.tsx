@@ -49,13 +49,13 @@ type POSState = "cart" | "success";
 
 function SyncStatusBadge({ status }: { status: SyncStatus }) {
   const config: Record<SyncStatus, { label: string; cls: string }> = {
-    pending: { label: "Saved locally", cls: "bg-gray-100 text-gray-700" },
-    submitting: { label: "Synchronizing…", cls: "bg-blue-50 text-blue-700" },
+    pending: { label: "Saved locally", cls: "bg-ink-100 text-ink-700" },
+    submitting: { label: "Synchronizing…", cls: "bg-brand-50 text-brand-700" },
     synced: { label: "Synced ✓", cls: "bg-green-50 text-green-700" },
     conflict: { label: "Needs attention ⚠", cls: "bg-red-50 text-red-700" },
     failed: { label: "Couldn’t sync — review", cls: "bg-red-50 text-red-700" },
     held: { label: "Paused — subscription", cls: "bg-amber-50 text-amber-700" },
-    discarded: { label: "Not sent", cls: "bg-gray-100 text-gray-600" },
+    discarded: { label: "Not sent", cls: "bg-ink-100 text-ink-600" },
   };
   const { label, cls } = config[status];
   return (
@@ -371,13 +371,13 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
     return (
       <div className="max-w-md mx-auto text-center space-y-4 py-12 px-4">
         <div className="text-4xl">✓</div>
-        <h2 className="text-xl font-semibold text-gray-900">Sale recorded</h2>
-        <p className="text-2xl font-bold text-gray-900">{fmt(lastSaleFinalTotal)}</p>
+        <h2 className="text-xl font-semibold text-ink-900">Sale recorded</h2>
+        <p className="text-2xl font-bold text-ink-900">{fmt(lastSaleFinalTotal)}</p>
         <div className="flex justify-center">
           <SyncStatusBadge status={lastSaleSyncStatus} />
         </div>
         {lastSaleSyncStatus === "pending" && (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-ink-500">
             Saved locally — will sync when connected.
           </p>
         )}
@@ -401,13 +401,13 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
               setState("cart");
               setLastSaleSyncStatus("pending");
             }}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
           >
             New sale
           </button>
           <a
             href={`/app/${businessId}/sell/history`}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="rounded-md border border-ink-300 px-4 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50"
           >
             View sales
           </a>
@@ -422,7 +422,7 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 pb-24 lg:pb-0">
       {/* Left / top: search */}
       <div className="space-y-3">
-        <h2 className="text-sm font-semibold text-gray-700">Search product</h2>
+        <h2 className="text-sm font-semibold text-ink-700">Search product</h2>
         {isOffline && (
           <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
             Offline — searching local cache
@@ -433,12 +433,12 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
           value={searchQuery}
           onChange={(e) => handleSearch(e.target.value)}
           placeholder="Name, SKU, or barcode…"
-          className="block w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="block w-full rounded-md border border-ink-300 px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           autoFocus
         />
-        {searching && <p className="text-xs text-gray-400">Searching…</p>}
+        {searching && <p className="text-xs text-ink-400">Searching…</p>}
         {searchResults.length > 0 && (
-          <ul className="rounded-md border border-gray-200 bg-white divide-y divide-gray-100 shadow-sm max-h-72 overflow-y-auto">
+          <ul className="rounded-md border border-ink-200 bg-white divide-y divide-ink-100 shadow-sm max-h-72 overflow-y-auto">
             {searchResults.map((p) => {
               const stock = p.stockSnapshot?.quantity ?? 0;
               return (
@@ -447,25 +447,25 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
                     type="button"
                     onClick={() => addToCart(p)}
                     disabled={stock === 0}
-                    className="w-full text-left px-4 py-2.5 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full text-left px-4 py-2.5 hover:bg-brand-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <span className="text-sm font-medium text-gray-900">
+                        <span className="text-sm font-medium text-ink-900">
                           {p.name}
                         </span>
                         {p.sku && (
-                          <span className="ml-2 text-xs text-gray-400">
+                          <span className="ml-2 text-xs text-ink-400">
                             {p.sku}
                           </span>
                         )}
                       </div>
                       <div className="text-right">
-                        <span className="text-sm font-semibold text-gray-900">
+                        <span className="text-sm font-semibold text-ink-900">
                           {fmt(p.sellingPrice)}
                         </span>
                         <span
-                          className={`ml-2 text-xs ${stock === 0 ? "text-red-500" : stock <= 5 ? "text-amber-500" : "text-gray-400"}`}
+                          className={`ml-2 text-xs ${stock === 0 ? "text-red-500" : stock <= 5 ? "text-amber-500" : "text-ink-400"}`}
                         >
                           {stock === 0 ? "Out" : `${stock} left`}
                         </span>
@@ -478,7 +478,7 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
           </ul>
         )}
         {searchQuery && searchResults.length === 0 && !searching && (
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-ink-400">
             No products found for &ldquo;{searchQuery}&rdquo;.
           </p>
         )}
@@ -486,7 +486,7 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
 
       {/* Right / bottom: cart */}
       <div className="space-y-3">
-        <h2 className="text-sm font-semibold text-gray-700">
+        <h2 className="text-sm font-semibold text-ink-700">
           Cart {cart.length > 0 && `(${cart.length} items)`}
         </h2>
 
@@ -497,21 +497,21 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
         )}
 
         {cart.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-400">
+          <div className="rounded-lg border border-dashed border-ink-300 px-4 py-8 text-center text-sm text-ink-400">
             Add products by searching above
           </div>
         ) : (
           <>
-            <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
+            <div className="rounded-lg border border-ink-200 bg-white divide-y divide-ink-100">
               {cart.map((item) => (
                 <div key={item.productId} className="px-3 py-2.5 space-y-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-gray-900 truncate">
+                    <span className="text-sm font-medium text-ink-900 truncate">
                       {item.productName}
                     </span>
                     <button
                       onClick={() => removeItem(item.productId)}
-                      className="text-xs text-gray-400 hover:text-red-500 shrink-0"
+                      className="text-xs text-ink-400 hover:text-red-500 shrink-0"
                       aria-label={`Remove ${item.productName}`}
                     >
                       ✕
@@ -521,7 +521,7 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => setQty(item.productId, item.quantity - 1)}
-                        className="w-7 h-7 rounded border border-gray-300 text-sm font-bold hover:bg-gray-100"
+                        className="w-7 h-7 rounded border border-ink-300 text-sm font-bold hover:bg-ink-100"
                         aria-label="Decrease quantity"
                       >
                         −
@@ -533,12 +533,12 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
                         onChange={(e) =>
                           setQty(item.productId, parseInt(e.target.value) || 1)
                         }
-                        className="w-12 text-center rounded border border-gray-300 px-1 py-0.5 text-sm"
+                        className="w-12 text-center rounded border border-ink-300 px-1 py-0.5 text-sm"
                         aria-label="Quantity"
                       />
                       <button
                         onClick={() => setQty(item.productId, item.quantity + 1)}
-                        className="w-7 h-7 rounded border border-gray-300 text-sm font-bold hover:bg-gray-100"
+                        className="w-7 h-7 rounded border border-ink-300 text-sm font-bold hover:bg-ink-100"
                         aria-label="Increase quantity"
                       >
                         +
@@ -550,12 +550,12 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
                         step="0.01"
                         defaultValue={Money.toDecimalString(item.unitPrice, currency)}
                         onBlur={(e) => setItemPrice(item.productId, e.target.value)}
-                        className="w-24 rounded border border-gray-300 px-2 py-0.5 text-sm text-right"
+                        className="w-24 rounded border border-ink-300 px-2 py-0.5 text-sm text-right"
                         title="Override price"
                         aria-label="Unit price"
                       />
                     ) : (
-                      <span className="text-sm text-gray-600">
+                      <span className="text-sm text-ink-600">
                         {fmt(item.unitPrice)}
                       </span>
                     )}
@@ -573,12 +573,12 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
             </div>
 
             {/* Totals */}
-            <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-2 text-sm">
-              <div className="flex justify-between text-gray-600">
+            <div className="rounded-lg border border-ink-200 bg-white p-3 space-y-2 text-sm">
+              <div className="flex justify-between text-ink-600">
                 <span>Subtotal</span>
                 <span>{fmt(subtotal)}</span>
               </div>
-              <div className="flex items-center justify-between text-gray-600">
+              <div className="flex items-center justify-between text-ink-600">
                 <label htmlFor="saleDiscount">Sale discount</label>
                 <input
                   id="saleDiscount"
@@ -588,10 +588,10 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
                   value={saleDiscount}
                   onChange={(e) => setSaleDiscount(e.target.value)}
                   onBlur={(e) => setItemDiscount("__sale__", e.target.value)}
-                  className="w-24 rounded border border-gray-300 px-2 py-0.5 text-right text-sm"
+                  className="w-24 rounded border border-ink-300 px-2 py-0.5 text-right text-sm"
                 />
               </div>
-              <div className="flex justify-between font-semibold text-base border-t border-gray-200 pt-2">
+              <div className="flex justify-between font-semibold text-base border-t border-ink-200 pt-2">
                 <span>Total</span>
                 <span>{fmt(finalTotal)}</span>
               </div>
@@ -599,8 +599,8 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
 
             {/* Pay later (sale on a customer's tab) */}
             {canSellOnCredit && (
-              <div className="rounded-md border border-gray-200 p-3 space-y-3">
-                <label className="flex items-center gap-2 text-sm font-medium text-gray-800">
+              <div className="rounded-md border border-ink-200 p-3 space-y-3">
+                <label className="flex items-center gap-2 text-sm font-medium text-ink-800">
                   <input
                     type="checkbox"
                     checked={onCredit}
@@ -611,23 +611,23 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
                 {onCredit && (
                   <>
                     {customers.length === 0 ? (
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-ink-600">
                         No customers yet.{" "}
-                        <a className="text-blue-700 underline" href={`/app/${businessId}/customers/new`}>
+                        <a className="text-brand-700 underline" href={`/app/${businessId}/customers/new`}>
                           Add a customer
                         </a>{" "}
                         first, then come back to this sale.
                       </p>
                     ) : (
                       <div>
-                        <label htmlFor="creditCustomer" className="block text-sm font-medium text-gray-700 mb-1">
+                        <label htmlFor="creditCustomer" className="block text-sm font-medium text-ink-700 mb-1">
                           Customer
                         </label>
                         <select
                           id="creditCustomer"
                           value={customerId}
                           onChange={(e) => setCustomerId(e.target.value)}
-                          className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          className="block w-full rounded-md border border-ink-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-500"
                         >
                           <option value="">Choose a customer…</option>
                           {customers.map((c) => (
@@ -640,7 +640,7 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
                       </div>
                     )}
                     <div>
-                      <label htmlFor="paidNow" className="block text-sm font-medium text-gray-700 mb-1">
+                      <label htmlFor="paidNow" className="block text-sm font-medium text-ink-700 mb-1">
                         Paid now
                       </label>
                       <input
@@ -651,10 +651,10 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
                         min="0"
                         value={paidNow}
                         onChange={(e) => setPaidNow(e.target.value)}
-                        className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="block w-full rounded-md border border-ink-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-500"
                       />
                     </div>
-                    <div className="flex justify-between text-sm font-semibold text-gray-900">
+                    <div className="flex justify-between text-sm font-semibold text-ink-900">
                       <span>Goes on their tab</span>
                       <span>{fmt(creditMinor)}</span>
                     </div>
@@ -668,7 +668,7 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
             <div>
               <label
                 htmlFor="paymentAccount"
-                className="block text-sm font-medium text-gray-700 mb-1"
+                className="block text-sm font-medium text-ink-700 mb-1"
               >
                 Payment account
               </label>
@@ -676,7 +676,7 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
                 id="paymentAccount"
                 value={selectedAccountId}
                 onChange={(e) => setSelectedAccountId(e.target.value)}
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="block w-full rounded-md border border-ink-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-500"
               >
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id}>
@@ -688,13 +688,13 @@ export function POSClient({ businessId, branchId, currency, accounts, canOverrid
             )}
 
             {/* Complete sale — fixed bottom on mobile */}
-            <div className="fixed bottom-0 left-0 right-0 p-3 bg-white border-t border-gray-200 lg:relative lg:bottom-auto lg:left-auto lg:right-auto lg:p-0 lg:bg-transparent lg:border-0 z-10">
+            <div className="fixed bottom-0 left-0 right-0 p-3 bg-white border-t border-ink-200 lg:relative lg:bottom-auto lg:left-auto lg:right-auto lg:p-0 lg:bg-transparent lg:border-0 z-10">
               <button
                 type="button"
                 onClick={() => void handleCompleteSale()}
                 disabled={submitting}
                 style={{ minHeight: "44px" }}
-                className="w-full rounded-md bg-blue-600 px-4 py-3 text-base font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                className="w-full rounded-md bg-brand-600 px-4 py-3 text-base font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
               >
                 {submitting
                   ? "Saving…"

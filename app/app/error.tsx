@@ -41,12 +41,12 @@ export default function AppErrorBoundary({ error, retry }: ErrorBoundaryProps) {
           />
         </svg>
 
-        <h1 className="text-xl font-semibold text-gray-900">
+        <h1 className="text-xl font-semibold text-ink-900">
           Something went wrong
         </h1>
 
         {error.digest && (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-ink-500">
             Reference: <span className="font-mono">{error.digest}</span>
           </p>
         )}
@@ -55,7 +55,7 @@ export default function AppErrorBoundary({ error, retry }: ErrorBoundaryProps) {
       <div className="flex flex-col gap-3 sm:flex-row">
         <button
           onClick={retry}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
         >
           Try again
         </button>
@@ -64,7 +64,7 @@ export default function AppErrorBoundary({ error, retry }: ErrorBoundaryProps) {
         {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a
           href="/app"
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          className="rounded-lg border border-ink-300 bg-white px-4 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
         >
           Go to home
         </a>

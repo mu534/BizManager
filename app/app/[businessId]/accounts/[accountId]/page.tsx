@@ -15,6 +15,7 @@ const TX: Record<string, { label: string; tone: Tone; sign: 1 | -1 }> = {
   SALE_PAYMENT: { label: "Sale payment", tone: "success", sign: 1 },
   EXPENSE_PAYMENT: { label: "Expense", tone: "warning", sign: -1 },
   REFUND: { label: "Customer refund", tone: "danger", sign: -1 },
+  DEBT_REPAYMENT: { label: "Customer paid their tab", tone: "success", sign: 1 },
   TRANSFER_IN: { label: "Transfer in", tone: "info", sign: 1 },
   TRANSFER_OUT: { label: "Transfer out", tone: "info", sign: -1 },
   MANUAL_CREDIT: { label: "Manual deposit", tone: "neutral", sign: 1 },
