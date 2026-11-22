@@ -334,6 +334,7 @@ describe("createSale — PENDING_VERIFICATION payments never call creditAccount"
     await createSale(ctx, {
       branchId: UUID_BRANCH_SVC,
       discountAmount: "0",
+      creditAmountMinor: 0,
       items: [{ productId: UUID_PRODUCT_SVC, unitPrice: "100.00", quantity: 1, discountAmount: "0" }],
       payments: [
         { accountId: UUID_ACCOUNT_VERIFIED, amountMinor: 7000, verificationStatus: "VERIFIED" },
