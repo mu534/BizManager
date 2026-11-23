@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { resolveContext } from "@server/auth/resolve-context";
 import { getDashboard } from "@server/services/dashboard.service";
+import { getSubscriptionAccess } from "@server/services/subscription.service";
+import { latestPaymentStatus } from "@server/services/subscription-payment.service";
+import { PlanFirstSteps } from "@components/billing/plan-first-steps";
 import { ButtonLink } from "@components/ui/button";
 import { Badge, Card, CardHeader, EmptyState, PageHeader, Stat } from "@components/ui/primitives";
 import { IconBox, IconCart, IconPlus, IconReceipt } from "@components/ui/icons";
@@ -36,7 +39,13 @@ export default async function DashboardPage({
   const [{ businessId }, sp] = await Promise.all([params, searchParams]);
   const range: ReportRange = sp.range === "7days" || sp.range === "month" ? sp.range : "today";
   const ctx = await resolveContext(businessId);
-  const d = await getDashboard(ctx, range, await getCurrentBranchId(ctx));
+  const [d, access] = await Promise.all([
+    getDashboard(ctx, range, await getCurrentBranchId(ctx)),
+    getSubscriptionAccess(businessId).catch(() => null),
+  ]);
+  // No plan yet: recording is paused, so show the plan steps instead of the setup checklist.
+  const awaitingPlan = access?.decision.state === "NONE";
+  const latestPayment = awaitingPlan ? await latestPaymentStatus(businessId) : null;
   const cur = d.business.currency;
   const money = (n: number) => formatMoney(n, cur);
   const base = `/app/${businessId}`;
@@ -70,7 +79,11 @@ export default async function DashboardPage({
         ))}
       </div>
 
-      {isEmptyBusiness && (
+      {awaitingPlan && (
+        <PlanFirstSteps businessId={businessId} isOwner={ctx.role === "OWNER"} latestPayment={latestPayment} />
+      )}
+
+      {isEmptyBusiness && !awaitingPlan && (
         <Card className="mb-5 overflow-hidden">
           <div className="bg-brand-gradient bg-grid-light p-5 text-white">
             <h2 className="text-lg font-semibold">Set up your shop in three steps</h2>

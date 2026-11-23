@@ -1,4 +1,3 @@
-
 import "server-only";
 import type { Subscription, Plan } from "@prisma/client";
 import { SubscriptionStatus } from "@prisma/client";
@@ -29,45 +28,6 @@ export type { FeatureKey, LimitKey };
 export type PrismaTransactionClient = Parameters<
   Parameters<typeof prisma.$transaction>[0]
 >[0];
-
-// ─── Trial subscription creation ────────────────────────────────────────────
-
-/**
- * Create a 14-day TRIAL subscription for a newly-created business.
- * Called inside the createBusiness transaction so the subscription and
- * business are created atomically.
- *
- * Returns null when no plans exist yet (e.g. before seed has run in CI).
- * The caller must handle null gracefully — lack of a subscription at
- * business creation is not a fatal error; the owner will subscribe later.
- */
-export async function createTrialSubscription(
-  businessId: string,
-  tx: PrismaTransactionClient,
-): Promise<Subscription | null> {
-  // Find the BASIC plan (lowest tier); fall back to any active plan.
-  const plan = await tx.plan.findFirst({
-    where: { isActive: true },
-    orderBy: { sortOrder: "asc" },
-  });
-
-  // If the database has no plans at all (fresh DB before seed runs), skip.
-  if (!plan) return null;
-
-  const now = new Date();
-  const trialEnd = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
-
-  return tx.subscription.create({
-    data: {
-      businessId,
-      planId: plan.id,
-      status: "TRIAL",
-      trialEndsAt: trialEnd,
-      currentPeriodStart: now,
-      currentPeriodEnd: trialEnd,
-    },
-  });
-}
 
 // ─── Simple named accessors (used by settings page and feature gates) ────────
 

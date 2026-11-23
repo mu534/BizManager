@@ -358,3 +358,20 @@ export async function authorizeEvidenceAccess(
   }
   return { allowed: false };
 }
+
+// ─── First-run helpers (no role check: used to route the signed-in owner) ───
+
+/** True once the business has ever submitted a subscription payment. */
+export async function hasSubmittedPayment(businessId: string): Promise<boolean> {
+  return (await prisma.subscriptionPayment.count({ where: { businessId } })) > 0;
+}
+
+/** Status of the business's most recent subscription payment, or null if none. */
+export async function latestPaymentStatus(businessId: string): Promise<"PENDING" | "APPROVED" | "REJECTED" | null> {
+  const p = await prisma.subscriptionPayment.findFirst({
+    where: { businessId },
+    orderBy: { createdAt: "desc" },
+    select: { status: true },
+  });
+  return p ? p.status : null;
+}

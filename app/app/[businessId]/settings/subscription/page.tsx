@@ -98,6 +98,13 @@ export default async function SubscriptionPage({ params }: { params: Promise<{ b
         </Alert>
       )}
 
+      {summary.state === "NONE" && payments.length === 0 && (
+        <Alert tone="info" title="Welcome — choose a plan to start recording">
+          You can look around your shop now. Recording sales, products, expenses and stock turns on once your payment
+          is approved, usually within one business day.
+        </Alert>
+      )}
+
       {pending ? (
         <Alert tone="info" title="Payment awaiting review">
           Your {formatMoney(pending.amountMinor, pending.currency)} payment (reference {pending.reference}) was

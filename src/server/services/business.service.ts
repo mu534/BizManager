@@ -1,4 +1,3 @@
-
 import "server-only";
 import type {
   Business,
@@ -10,7 +9,6 @@ import { prisma } from "@server/db/prisma";
 import { appError } from "@shared/errors";
 import type { CreateBusinessInput } from "@shared/validation/business.schema";
 import { UserRole } from "@shared/types/auth.types";
-import { createTrialSubscription } from "./subscription.service";
 
 /**
  * Shape returned from createBusiness — the full set of records created
@@ -106,8 +104,8 @@ export async function createBusiness(
       })),
     });
 
-    // 6. Create a 14-day trial subscription for the new business.
-    await createTrialSubscription(business.id, tx);
+    // No subscription is created here on purpose: a new business has no plan
+    // (access state NONE, read-only) until the owner pays and an admin approves it.
 
     return { business, branch, membership, defaultAccounts };
   });
