@@ -11,6 +11,7 @@ import { UserRole } from "@shared/types/auth.types";
 import { hasFinancialReportAccess } from "@shared/team-rules";
 import { listAccessibleBranches } from "@server/services/branch-access.service";
 import { getCurrentBranch } from "@server/branch/current-branch";
+import { resolveLocale } from "@server/i18n/resolve-locale";
 
 // Reads cookies → must not prerender. Suppresses instant-nav validation
 // for the entire /app/[businessId]/* subtree.
@@ -47,6 +48,7 @@ export default async function BusinessLayout({
   const actor = { businessId, membershipId: membership.id, role: membership.role as UserRole };
   const accessibleBranches = await listAccessibleBranches(actor).catch(() => []);
   const currentBranch = await getCurrentBranch(actor).catch(() => null);
+  const locale = await resolveLocale();
 
   const groups = serializeGroups(
     visibleGroups({
@@ -76,6 +78,7 @@ export default async function BusinessLayout({
       user={{ name: user.name, email: user.email }}
       businesses={businessOptions}
       groups={groups}
+      locale={locale}
     >
       <VerifyEmailBanner />
       <SubscriptionBanner businessId={businessId} isOwner={membership.role === UserRole.OWNER} />
