@@ -527,7 +527,8 @@ export function Landing({ locale }: { locale: Locale }) {
               {t.footer.tagline}
             </p>
             <div className="mt-4">
-              <LanguageSwitcher current={locale} label={t.nav.language} tone="dark" />
+  
+              <LanguageSwitcher current={locale} label={t.nav.language} tone="dark" placement="top" />
             </div>
           </div>
           <nav aria-label={t.footer.product}>
