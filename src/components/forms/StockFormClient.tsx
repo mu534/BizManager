@@ -141,8 +141,17 @@ export function StockFormClient({
         setResult({ kind: "offline" });
         setFormKey((k) => k + 1);
       }
-    } catch {
-      setResult({ kind: "error", message: "Could not save on this device. Free some storage and try again." });
+    } catch (err) {
+      console.error("[StockFormClient] failed to queue stock change:", err);
+      const isQuota =
+        err instanceof DOMException &&
+        (err.name === "QuotaExceededError" || err.name === "NS_ERROR_DOM_QUOTA_REACHED");
+      setResult({
+        kind: "error",
+        message: isQuota
+          ? "Could not save on this device. Free some storage and try again."
+          : "Could not save the change. Please try again. If this keeps happening, reload the page.",
+      });
     } finally {
       setBusy(false);
     }

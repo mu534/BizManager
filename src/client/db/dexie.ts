@@ -250,6 +250,11 @@ export class BizManagerDB extends Dexie {
           for (const item of sale.items ?? []) delete item.unitCost;
         });
       });
+
+    // v3: add syncOperationId index to syncQueue so waitForOutcome can query it.
+    this.version(3).stores({
+      syncQueue: "id, syncOperationId, [businessId+status], retryAt, createdAt",
+    });
   }
 }
 
