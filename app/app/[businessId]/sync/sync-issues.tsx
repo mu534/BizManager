@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { db, type LocalExpense, type LocalSale, type SyncQueueItem } from "@client/db/dexie";
-import { discardItem, processQueue, retryItem } from "@client/db/sync-queue";
+import { discardItem, processQueue, retryItem, resetBackoff } from "@client/db/sync-queue";
 import { needsAttention, type QueueStatus } from "@shared/sync-policy";
 import { Money } from "@shared/money";
 import { Badge, Card, CardHeader, EmptyState } from "@components/ui/primitives";
@@ -124,7 +124,7 @@ export function SyncIssues({ businessId, currency }: { businessId: string; curre
         <Button
           variant="secondary"
           loading={busy}
-          onClick={() => void run(async () => processQueue(businessId), "Sync attempted.")}
+          onClick={() => void run(async () => { await resetBackoff(businessId); await processQueue(businessId); }, "Sync attempted.")}
         >
           Sync now
         </Button>

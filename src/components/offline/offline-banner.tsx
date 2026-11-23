@@ -13,7 +13,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useOfflineStatus } from "@client/hooks/use-offline-status";
 import { db } from "@client/db/dexie";
-import { processQueue } from "@client/db/sync-queue";
+import { processQueue, resetBackoff } from "@client/db/sync-queue";
 import { summarizeQueue, type QueueSummary, type QueueStatus } from "@shared/sync-policy";
 
 interface OfflineBannerProps {
@@ -99,6 +99,7 @@ export function OfflineBanner({ businessId }: OfflineBannerProps) {
     if (!businessId) return;
     setSyncing(true);
     try {
+      await resetBackoff(businessId);
       await processQueue(businessId);
     } finally {
       setSyncing(false);

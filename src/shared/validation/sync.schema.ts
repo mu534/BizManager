@@ -34,7 +34,7 @@ export const syncSalePayloadSchema = z.object({
   customerId: z.string().uuid("Invalid customer").optional(),
   /** Unpaid part of the sale in minor units. */
   creditAmountMinor: z.number().int().min(0).optional(),
-  notes: z.string().max(500).optional(),
+  notes: z.string().max(500).nullish(),
   /**
    * branchId from the client payload.
    * Used to call resolveContext(businessId, branchId) — the server
@@ -61,7 +61,7 @@ export const syncExpensePayloadSchema = z.object({
       (v) => !isNaN(parseFloat(v)) && parseFloat(v) > 0,
       "Amount must be positive",
     ),
-  description: z.string().max(500).optional(),
+  description: z.string().max(500).nullish(),
   /** ISO date string YYYY-MM-DD */
   expenseDate: z
     .string()
@@ -89,7 +89,7 @@ const inventoryBase = {
   productId: z.string().uuid("Invalid product"),
   /** Used only to call resolveContext(businessId, branchId); never trusted alone. */
   branchId: z.string().uuid("Invalid branch"),
-  notes: z.string().max(500).optional(),
+  notes: z.string().max(500).nullish(),
 };
 const costString = z
   .string()

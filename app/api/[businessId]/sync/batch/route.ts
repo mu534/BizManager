@@ -71,12 +71,14 @@ export async function POST(
 
   const parsed = syncBatchSchema.safeParse(body);
   if (!parsed.success) {
+    const details = parsed.error.flatten().fieldErrors;
+    console.error("[POST /api/[businessId]/sync/batch] 422 validation failure:", JSON.stringify({ body, details, issues: parsed.error.issues }, null, 2));
     return NextResponse.json(
       {
         error: {
           code: "VALIDATION_ERROR",
           message: "Invalid sync batch",
-          details: parsed.error.flatten().fieldErrors,
+          details,
         },
       },
       { status: 422 },

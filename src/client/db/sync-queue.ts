@@ -20,7 +20,7 @@
  *    before the sale that depends on it.
  */
 
-import { db, type SyncQueueItem, type SyncStatus } from "./dexie";
+import { db, getClientId, type SyncQueueItem, type SyncStatus } from "./dexie";
 import {
   isDeliverable,
   manualRetryState,
@@ -139,7 +139,7 @@ export async function processQueue(businessId: string): Promise<void> {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          clientId: batch[0]?.clientId ?? "",
+          clientId: batch[0]?.clientId || getClientId(),
           operations: batch.map((item) => ({
             syncOperationId: item.syncOperationId,
             entityType: item.entityType,
@@ -151,6 +151,15 @@ export async function processQueue(businessId: string): Promise<void> {
       });
 
       if (!response.ok) {
+        // Log the body on 422 so schema mismatches are visible in the console.
+        if (response.status === 422) {
+          try {
+            const errBody = await response.json();
+            console.error("[sync/batch] 422 validation error from server:", JSON.stringify(errBody, null, 2));
+          } catch {
+            console.error("[sync/batch] 422 response (body unreadable)");
+          }
+        }
         const outcome: SyncOutcome =
           response.status === 401 ? { kind: "unauthenticated" } : { kind: "http", status: response.status };
         for (const item of batch) await applyOutcome(item, outcome);
@@ -188,6 +197,17 @@ export async function retryItem(id: string): Promise<void> {
   const item = await db.syncQueue.get(id);
   if (!item || item.status === "synced" || item.status === "discarded") return;
   await applyState(item, manualRetryState());
+}
+
+/**
+ * Force all pending items for a business to be immediately deliverable,
+ * bypassing their backoff window. Used by the "Sync now" button.
+ */
+export async function resetBackoff(businessId: string): Promise<void> {
+  await db.syncQueue
+    .where("[businessId+status]")
+    .equals([businessId, "pending"])
+    .modify({ retryAt: 0 });
 }
 
 /**
