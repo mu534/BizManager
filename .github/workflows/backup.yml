@@ -1,0 +1,39 @@
+name: Database backup
+
+# Nightly encrypted copy of the production database, sent to your own storage bucket.
+# Off until you create the repository variable BACKUPS_ENABLED = true (Settings → Secrets and
+# variables → Actions → Variables). See DEPLOYMENT.md, "Backups".
+on:
+  schedule:
+    - cron: "30 1 * * *" # 01:30 UTC every night
+  workflow_dispatch:
+
+jobs:
+  backup:
+    if: ${{ vars.BACKUPS_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # Match the production server's major version so pg_dump can read it.
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-${{ vars.POSTGRES_MAJOR || '16' }}
+
+      - name: Back up, verify and upload
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          BACKUP_DIR: ${{ runner.temp }}/backups
+          BACKUP_KEEP: "1"
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_BUCKET_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_BUCKET_SECRET }}
+          AWS_DEFAULT_REGION: auto
+          BACKUP_BUCKET: ${{ secrets.BACKUP_BUCKET }} # e.g. my-bucket/bizmanager
+          BACKUP_ENDPOINT: ${{ secrets.BACKUP_BUCKET_ENDPOINT }} # S3-compatible URL (Cloudflare R2, Backblaze B2, AWS…)
+          BACKUP_UPLOAD_CMD: 'aws s3 cp "$1" "s3://$BACKUP_BUCKET/" --endpoint-url "$BACKUP_ENDPOINT"'
+        run: ./scripts/backup-db.sh

@@ -205,3 +205,70 @@ Optional. Without these three settings the feature is simply off and nothing els
 An alert is sent once when a product drops to its "minimum stock" level (and again only after it has been
 restocked above that level and drops again). Owners are told about every branch, managers about the branches
 they can access. Alerts are sent after the sale is saved, so a notification problem can never fail a sale.
+
+## Before new owners can sign up (required)
+
+Under the "no automatic trial" rule a new owner must pay before recording anything, so they need to be
+told where to send money. Set at least one of these in the server environment:
+
+- Telebirr: `BILLING_TELEBIRR_NUMBER` (and `BILLING_TELEBIRR_NAME`)
+- Bank: `BILLING_BANK_NAME` and `BILLING_BANK_ACCOUNT` (and `BILLING_BANK_ACCOUNT_NAME`)
+
+If none is set, owners see "Payment details have not been configured" and platform admins see a red
+warning on the console overview. Use real, business-owned accounts: owners will send money to them.
+
+## Payment alerts for admins
+
+New owners are waiting for approval, so admins are told straight away:
+
+- The console navigation shows a number badge on **Payments** whenever payments are waiting.
+- Optional Telegram message for each new payment: set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ADMIN_CHAT_ID`
+  (steps in `.env.example`). The message names the shop, plan, amount and reference. It never includes the
+  receipt image or the owner's contact details. If Telegram is down, the owner's submission still succeeds.
+
+## Backups
+
+Two layers. Use both.
+
+1. **Your database host's own backups.** Turn on automated daily backups and, if offered, point-in-time recovery
+   (Neon, Supabase, AWS RDS and others have it). Check the retention period matches how far back you may need.
+2. **Your own encrypted offsite copy** (this repository), in case the host account itself is lost:
+   - `scripts/backup-db.sh` dumps the database, encrypts it (AES-256), reads it back to prove it is valid, optionally
+     uploads it, and keeps the newest few local copies. Needs `pg_dump` and `gpg`.
+   - `.github/workflows/backup.yml` runs it every night. To switch it on, add repository **secrets**
+     `BACKUP_DATABASE_URL` (direct, not pooled), `BACKUP_PASSPHRASE`, `BACKUP_BUCKET`, `BACKUP_BUCKET_ENDPOINT`,
+     `BACKUP_BUCKET_KEY_ID`, `BACKUP_BUCKET_SECRET`, then the **variable** `BACKUPS_ENABLED=true`
+     (and `POSTGRES_MAJOR` if your server is not version 16). Use a private bucket in your own account
+     (Cloudflare R2, Backblaze B2 and AWS S3 all work), with lifecycle rules for how long to keep files.
+   - Store `BACKUP_PASSPHRASE` in a password manager too. If it is lost, every backup is unreadable.
+   - Backups hold every shop's financial records. Keep the bucket private and the passphrase secret.
+
+**A backup you have never restored is a hope, not a backup.** Once a month, restore the newest one into an empty
+scratch database and compare the counts with production:
+
+```
+RESTORE_DATABASE_URL=postgresql://…/scratch BACKUP_PASSPHRASE=… RESTORE_CONFIRM=yes ./scripts/restore-check.sh
+```
+
+The script refuses to run against the production URL, and prints row counts for users, businesses, sales and payments.
+
+## Error monitoring
+
+Sentry (optional). Create a project at sentry.io (platform: Next.js) and set `SENTRY_DSN` and
+`NEXT_PUBLIC_SENTRY_DSN` to its DSN. Without them nothing is sent.
+
+What is and is not sent: errors and their stack traces only. Cookies, headers, request bodies, query strings, user
+details and breadcrumbs are removed before sending (`src/shared/monitoring.ts`), and expected user errors
+(validation, permissions, not found) are ignored. There is no performance tracing or session replay.
+Sentry stores data outside Ethiopia; mention error monitoring in your privacy policy.
+
+## Enforcing the Content-Security-Policy
+
+The policy is sent in report-only mode. Browsers post anything they would block to `/api/csp-report`,
+which writes lines starting `[csp]` to your server logs (browser-extension noise is filtered out).
+
+1. Deploy to staging and use the app: sign in with email and with Google, sell, print a receipt, install the app,
+   go offline and back online, turn on notifications, open the admin console.
+2. Search the staging logs for `[csp]`. Fix or allow anything legitimate (edit the `CSP` list in `next.config.ts`).
+3. When a full pass leaves no `[csp]` lines, set `CSP_ENFORCE=true` and **rebuild** (the value is read at build time).
+4. Watch the logs for a day after release. To roll back, unset `CSP_ENFORCE` and rebuild.

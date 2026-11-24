@@ -9,6 +9,7 @@
  * safe to display and helps correlate logs without exposing internals.
  */
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 
 interface ErrorBoundaryProps {
   error: Error & { digest?: string };
@@ -18,9 +19,10 @@ interface ErrorBoundaryProps {
 export default function AppErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   useEffect(() => {
     // Log to the browser console for developer debugging.
-    // Do not send error.message to any external service here without
-    // reviewing what it may contain.
     console.error(error);
+    // Error monitoring (no-op unless NEXT_PUBLIC_SENTRY_DSN is set). Events are scrubbed of
+    // cookies, headers, request data and user details first: see src/shared/monitoring.ts.
+    Sentry.captureException(error);
   }, [error]);
 
   return (
