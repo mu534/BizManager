@@ -15,7 +15,8 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://*.googleusercontent.com",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebaseapp.com",
+  // Sentry hosts: only used when error monitoring is configured.
+  "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebaseapp.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io",
   "frame-src https://accounts.google.com https://*.firebaseapp.com",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
@@ -23,7 +24,16 @@ const CSP = [
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
+  // Browsers post violations here (logged by app/api/csp-report/route.ts).
+  "report-uri /api/csp-report",
 ].join("; ");
+
+/**
+ * CSP_ENFORCE=true switches the policy from report-only to enforcing. It is read when
+ * the app is built, so set it before `next build`. Leave it unset until the violation
+ * logs ("[csp] ..." lines) have been clean on staging.
+ */
+const CSP_HEADER = process.env.CSP_ENFORCE === "true" ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only";
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
@@ -51,7 +61,7 @@ const nextConfig: NextConfig = {
           ...(isProd
             ? [
                 { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
-                { key: "Content-Security-Policy-Report-Only", value: CSP },
+                { key: CSP_HEADER, value: CSP },
               ]
             : []),
         ],
