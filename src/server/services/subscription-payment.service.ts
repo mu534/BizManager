@@ -16,6 +16,7 @@
  *  - Pending evidence never activates anything by itself.
  *  - Every review is audited in the same transaction.
  */
+import { scheduleNewPaymentAlert } from "@server/services/admin-alerts";
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
@@ -121,7 +122,7 @@ export async function submitSubscriptionPayment(
   await saveEvidence(key, file, check.kind);
 
   try {
-    return await prisma.subscriptionPayment.create({
+    const payment = await prisma.subscriptionPayment.create({
       data: {
         id,
         businessId: ctx.businessId,
@@ -138,6 +139,9 @@ export async function submitSubscriptionPayment(
         submittedById: ctx.userId,
       },
     });
+    // Tell the admin team right away (no-op unless Telegram is configured).
+    scheduleNewPaymentAlert(payment.id);
+    return payment;
   } catch (err) {
     await deleteEvidenceQuietly(key);
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
@@ -374,4 +378,9 @@ export async function latestPaymentStatus(businessId: string): Promise<"PENDING"
     select: { status: true },
   });
   return p ? p.status : null;
+}
+
+/** Payments waiting for an admin decision. Used for the console badge; callers are already admin-guarded. */
+export async function pendingReviewCount(): Promise<number> {
+  return prisma.subscriptionPayment.count({ where: { status: "PENDING" } });
 }

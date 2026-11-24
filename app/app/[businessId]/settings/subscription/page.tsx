@@ -1,3 +1,4 @@
+import { billingInstructions } from "@server/billing-config";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { resolveContext } from "@server/auth/resolve-context";
@@ -25,18 +26,6 @@ const STATE_LABEL: Record<string, { label: string; tone: Tone }> = {
 const PAYMENT_TONE: Record<string, Tone> = { PENDING: "warning", APPROVED: "success", REJECTED: "danger" };
 const PAYMENT_LABEL: Record<string, string> = { PENDING: "Awaiting review", APPROVED: "Approved", REJECTED: "Rejected" };
 
-function instructions(): { telebirr: string | null; bank: string | null } {
-  const tNum = process.env.BILLING_TELEBIRR_NUMBER;
-  const tName = process.env.BILLING_TELEBIRR_NAME;
-  const bBank = process.env.BILLING_BANK_NAME;
-  const bAcct = process.env.BILLING_BANK_ACCOUNT;
-  const bName = process.env.BILLING_BANK_ACCOUNT_NAME;
-  return {
-    telebirr: tNum ? `${tNum}${tName ? ` (${tName})` : ""}` : null,
-    bank: bBank && bAcct ? `${bBank} — ${bAcct}${bName ? ` (${bName})` : ""}` : null,
-  };
-}
-
 export default async function SubscriptionPage({ params }: { params: Promise<{ businessId: string }> }) {
   const { businessId } = await params;
   const ctx = await resolveContext(businessId).catch(() => null);
@@ -50,7 +39,7 @@ export default async function SubscriptionPage({ params }: { params: Promise<{ b
   ]);
   const state = STATE_LABEL[summary.state] ?? { label: "Unknown", tone: "neutral" as Tone };
   const pending = payments.find((p) => p.status === "PENDING");
-  const pay = instructions();
+  const pay = billingInstructions();
   const planNames = new Map(plans.map((p) => [p.id, p.displayName] as const));
 
   return (

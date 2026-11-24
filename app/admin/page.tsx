@@ -1,3 +1,4 @@
+import { billingConfigured } from "@server/billing-config";
 import { adminPageGuard } from "@server/auth/require-admin-page";
 import { getPlatformMetrics } from "@server/services/platform-admin.service";
 import { Alert, Card, CardHeader, PageHeader, Stat } from "@components/ui/primitives";
@@ -16,6 +17,13 @@ export default async function AdminOverview() {
         title="Overview"
         description="Recorded platform facts only. Nothing here is estimated, and no revenue total is shown."
       />
+
+      {!billingConfigured() && (
+        <Alert tone="danger" title="Payment details are not set up">
+          New owners cannot subscribe, because they are not told where to send money. Set BILLING_TELEBIRR_NUMBER and/or
+          BILLING_BANK_NAME and BILLING_BANK_ACCOUNT in the server environment.
+        </Alert>
+      )}
 
       {m.pendingPaymentReviews > 0 && (
         <Alert
