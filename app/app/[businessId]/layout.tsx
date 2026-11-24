@@ -12,6 +12,7 @@ import { hasFinancialReportAccess } from "@shared/team-rules";
 import { listAccessibleBranches } from "@server/services/branch-access.service";
 import { getCurrentBranch } from "@server/branch/current-branch";
 import { resolveLocale } from "@server/i18n/resolve-locale";
+import { isPlatformAdmin } from "@server/services/platform-admin.service";
 
 // Reads cookies → must not prerender. Suppresses instant-nav validation
 // for the entire /app/[businessId]/* subtree.
@@ -49,6 +50,7 @@ export default async function BusinessLayout({
   const accessibleBranches = await listAccessibleBranches(actor).catch(() => []);
   const currentBranch = await getCurrentBranch(actor).catch(() => null);
   const locale = await resolveLocale();
+  const isAdmin = await isPlatformAdmin(userId).catch(() => false);
 
   const groups = serializeGroups(
     visibleGroups({
@@ -79,6 +81,7 @@ export default async function BusinessLayout({
       businesses={businessOptions}
       groups={groups}
       locale={locale}
+      isAdmin={isAdmin}
     >
       <VerifyEmailBanner />
       <SubscriptionBanner businessId={businessId} isOwner={membership.role === UserRole.OWNER} />

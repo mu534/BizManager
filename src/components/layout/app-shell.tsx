@@ -25,6 +25,7 @@ export interface ShellProps {
   businesses: BusinessOption[];
   groups: SerializedNavGroup[];
   locale: Locale;
+  isAdmin?: boolean;
   children: ReactNode;
 }
 
@@ -33,7 +34,7 @@ export interface ShellProps {
  * Desktop (lg+): fixed 256px sidebar with grouped navigation.
  * Mobile: top bar + bottom tab bar with a "More" sheet.
  */
-export function AppShell({ businessId, businessName, branchName, branches, currentBranchId, roleLabel, user, businesses, groups, locale, children }: ShellProps) {
+export function AppShell({ businessId, businessName, branchName, branches, currentBranchId, roleLabel, user, businesses, groups, locale, isAdmin, children }: ShellProps) {
   const base = `/app/${businessId}`;
   return (
     <div className="min-h-dvh">
@@ -67,7 +68,7 @@ export function AppShell({ businessId, businessName, branchName, branches, curre
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <TopbarSearch base={base} />
             <LocaleSwitcher current={locale} />
-            <AccountMenu name={user.name} email={user.email} roleLabel={roleLabel} businesses={businesses} currentId={businessId} />
+            <AccountMenu name={user.name} email={user.email} roleLabel={roleLabel} businesses={businesses} currentId={businessId} isAdmin={isAdmin} />
           </div>
         </header>
 

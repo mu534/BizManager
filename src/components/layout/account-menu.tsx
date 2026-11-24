@@ -7,8 +7,8 @@ import SignOutButton from "./sign-out-button";
 
 export interface BusinessOption { id: string; name: string }
 
-export function AccountMenu({ name, email, roleLabel, businesses, currentId }: {
-  name: string; email: string | null; roleLabel: string; businesses: BusinessOption[]; currentId: string;
+export function AccountMenu({ name, email, roleLabel, businesses, currentId, isAdmin }: {
+  name: string; email: string | null; roleLabel: string; businesses: BusinessOption[]; currentId: string; isAdmin?: boolean;
 }) {
   const initials = name.split(/\s+/).map((s) => s[0]).slice(0, 2).join("").toUpperCase() || "U";
   return (
@@ -34,6 +34,16 @@ export function AccountMenu({ name, email, roleLabel, businesses, currentId }: {
               {b.name}{b.id === currentId && " ✓"}
             </Link>
           ))}
+        </div>
+      )}
+      {isAdmin && (
+        <div className="border-b border-line py-1.5">
+          <Link role="menuitem" href="/admin" className="flex items-center gap-2 rounded px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-50">
+            <svg aria-hidden="true" viewBox="0 0 20 20" className="size-4" fill="currentColor">
+              <path fillRule="evenodd" d="M9.293 2.293a1 1 0 0 1 1.414 0l7 7A1 1 0 0 1 17 11h-1v6a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-3H8v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-6H3a1 1 0 0 1-.707-1.707l7-7Z" clipRule="evenodd" />
+            </svg>
+            Admin console
+          </Link>
         </div>
       )}
       <div className="px-3 pt-2"><SignOutButton /></div>
