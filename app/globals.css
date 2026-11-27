@@ -209,5 +209,5 @@ body {
   background-color: var(--color-ink-900);
 }
 :lang(am) {
-  font-family: var(--font-ethiopic), var(--font-sans);
+  font-family: "Noto Sans Ethiopic", var(--font-sans);
 }

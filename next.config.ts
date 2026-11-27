@@ -12,9 +12,9 @@ const isProd = process.env.NODE_ENV === "production";
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' https://apis.google.com https://www.gstatic.com",
-  "style-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "img-src 'self' data: blob: https://*.googleusercontent.com",
-  "font-src 'self' data:",
+  "font-src 'self' data: https://fonts.gstatic.com",
   // Sentry hosts: only used when error monitoring is configured.
   "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebaseapp.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io",
   "frame-src https://accounts.google.com https://*.firebaseapp.com",
